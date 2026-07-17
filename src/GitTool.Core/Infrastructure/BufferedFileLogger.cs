@@ -10,13 +10,14 @@ public sealed class BufferedFileLogger : IAppLogger, IAsyncDisposable
     private readonly AppPaths _paths;
     private readonly ConcurrentQueue<string> _entries = new();
     private readonly SemaphoreSlim _flushLock = new(1, 1);
-    private readonly CancellationTokenSource _shutdown = new();
+    private readonly PeriodicTimer _flushTimer;
     private readonly Task _periodicFlushTask;
 
     public BufferedFileLogger(AppPaths paths)
     {
         _paths = paths;
-        _periodicFlushTask = RunPeriodicFlushAsync(_shutdown.Token);
+        _flushTimer = new PeriodicTimer(FlushInterval);
+        _periodicFlushTask = RunPeriodicFlushAsync();
         Info("GitTool started.");
     }
 
@@ -74,19 +75,17 @@ public sealed class BufferedFileLogger : IAppLogger, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Info("GitTool is closing.");
-        _shutdown.Cancel();
+        _flushTimer.Dispose();
+        await _periodicFlushTask.ConfigureAwait(false);
 
         try
         {
-            await _periodicFlushTask.ConfigureAwait(false);
+            await FlushAsync().ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        finally
         {
+            _flushLock.Dispose();
         }
-
-        await FlushAsync().ConfigureAwait(false);
-        _shutdown.Dispose();
-        _flushLock.Dispose();
     }
 
     private void Enqueue(string level, string message)
@@ -94,16 +93,15 @@ public sealed class BufferedFileLogger : IAppLogger, IAsyncDisposable
         _entries.Enqueue($"{DateTimeOffset.Now:O} [{level}] {message}");
     }
 
-    private async Task RunPeriodicFlushAsync(CancellationToken cancellationToken)
+    private async Task RunPeriodicFlushAsync()
     {
-        using var timer = new PeriodicTimer(FlushInterval);
-        while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+        while (await _flushTimer.WaitForNextTickAsync().ConfigureAwait(false))
         {
             try
             {
-                await FlushAsync(cancellationToken).ConfigureAwait(false);
+                await FlushAsync().ConfigureAwait(false);
             }
-            catch when (!cancellationToken.IsCancellationRequested)
+            catch
             {
                 // Preserve queued entries and try again at the next interval.
             }

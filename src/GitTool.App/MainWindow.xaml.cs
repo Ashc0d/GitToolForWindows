@@ -10,12 +10,12 @@ namespace GitTool.App;
 
 public sealed partial class MainWindow : Window
 {
-    private const int InitialWidth = 1180;
-    private const int InitialHeight = 760;
+    private const int InitialWidth = 1388;
+    private const int InitialHeight = 1144;
     private readonly AppWindow _appWindow;
     private bool _shutdownStarted;
     private bool _cancellationDialogOpen;
-    private bool _closeAfterCancellation;
+    private bool _closeRequested;
 
     public MainWindow()
     {
@@ -52,10 +52,12 @@ public sealed partial class MainWindow : Window
     {
         var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
         var workArea = displayArea.WorkArea;
-        var x = workArea.X + Math.Max(0, (workArea.Width - InitialWidth) / 2);
-        var y = workArea.Y + Math.Max(0, (workArea.Height - InitialHeight) / 2);
+        var width = Math.Min(InitialWidth, workArea.Width);
+        var height = Math.Min(InitialHeight, workArea.Height);
+        var x = workArea.X + Math.Max(0, (workArea.Width - width) / 2);
+        var y = workArea.Y + Math.Max(0, (workArea.Height - height) / 2);
 
-        _appWindow.Resize(new SizeInt32(InitialWidth, InitialHeight));
+        _appWindow.Resize(new SizeInt32(width, height));
         _appWindow.Move(new PointInt32(x, y));
     }
 
@@ -121,10 +123,9 @@ public sealed partial class MainWindow : Window
             _ => "\uE946"
         };
 
-        if (_closeAfterCancellation && !isBusy)
+        if (_closeRequested && !isBusy)
         {
-            _closeAfterCancellation = false;
-            Close();
+            _ = ShutdownAndCloseAsync();
         }
     }
 
@@ -133,13 +134,31 @@ public sealed partial class MainWindow : Window
         await ConfirmCancellationAsync(closeWhenFinished: false);
     }
 
-    private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        if (App.Current.Services.OperationCoordinator.Current.IsBusy)
+        // Own the complete shutdown sequence so async cancellation and logger
+        // cleanup finish before the XAML window closes.
+        args.Cancel = true;
+
+        if (_shutdownStarted)
         {
-            args.Cancel = true;
-            await ConfirmCancellationAsync(closeWhenFinished: true);
+            return;
         }
+
+        var snapshot = App.Current.Services.OperationCoordinator.Current;
+        if (!snapshot.IsBusy)
+        {
+            DispatcherQueue.TryEnqueue(() => _ = ShutdownAndCloseAsync());
+            return;
+        }
+
+        if (snapshot.State == OperationState.Cancelling)
+        {
+            _closeRequested = true;
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() => _ = ConfirmCancellationAsync(closeWhenFinished: true));
     }
 
     private async Task ConfirmCancellationAsync(bool closeWhenFinished)
@@ -154,7 +173,8 @@ public sealed partial class MainWindow : Window
         {
             if (closeWhenFinished)
             {
-                Close();
+                _closeRequested = true;
+                await ShutdownAndCloseAsync();
             }
 
             return;
@@ -187,18 +207,43 @@ public sealed partial class MainWindow : Window
             }
 
             BusyCancelButton.IsEnabled = false;
-            _closeAfterCancellation |= closeWhenFinished;
+            _closeRequested |= closeWhenFinished;
             coordinator.CancelCurrentOperation();
 
             if (closeWhenFinished && !coordinator.Current.IsBusy)
             {
-                _closeAfterCancellation = false;
-                Close();
+                await ShutdownAndCloseAsync();
             }
         }
         finally
         {
             _cancellationDialogOpen = false;
+        }
+    }
+
+    private async Task ShutdownAndCloseAsync()
+    {
+        if (_shutdownStarted)
+        {
+            return;
+        }
+
+        _shutdownStarted = true;
+        _closeRequested = false;
+        App.Current.Services.OperationCoordinator.StatusChanged -= OnOperationStatusChanged;
+
+        try
+        {
+            await App.Current.Services.ShutdownAsync();
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"GitTool shutdown cleanup failed: {exception}");
+        }
+        finally
+        {
+            _appWindow.Closing -= OnAppWindowClosing;
+            Close();
         }
     }
 
