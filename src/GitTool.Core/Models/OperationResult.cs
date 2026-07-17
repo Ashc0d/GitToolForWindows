@@ -5,8 +5,13 @@ public sealed record OperationResult(
     string Summary,
     string StandardOutput = "",
     string StandardError = "",
-    int ExitCode = 0)
+    int ExitCode = 0,
+    OperationCancellationMetadata? Cancellation = null)
 {
+    public bool IsCancelled => Cancellation is not null;
+
+    public bool HasCancellationWarning => Cancellation?.CleanupFailed == true;
+
     public string Diagnostics
     {
         get
@@ -29,4 +34,28 @@ public sealed record OperationResult(
         string standardOutput = "",
         int exitCode = -1) =>
         new(false, summary, standardOutput, standardError, exitCode);
+
+    public static OperationResult Cancelled(
+        string summary = "The operation was cancelled.",
+        string standardError = "",
+        string standardOutput = "",
+        int exitCode = -1,
+        OperationCancellationMetadata? cancellation = null) =>
+        new(
+            false,
+            summary,
+            standardOutput,
+            standardError,
+            exitCode,
+            cancellation ?? OperationCancellationMetadata.NoCleanup);
+}
+
+public sealed record OperationCancellationMetadata(
+    bool CleanupAttempted,
+    bool CleanupSucceeded,
+    string? RemainingPath = null)
+{
+    public bool CleanupFailed => CleanupAttempted && !CleanupSucceeded;
+
+    public static OperationCancellationMetadata NoCleanup { get; } = new(false, true);
 }

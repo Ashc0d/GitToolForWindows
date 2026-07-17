@@ -14,6 +14,8 @@ public sealed partial class MainWindow : Window
     private const int InitialHeight = 760;
     private readonly AppWindow _appWindow;
     private bool _shutdownStarted;
+    private bool _cancellationDialogOpen;
+    private bool _closeAfterCancellation;
 
     public MainWindow()
     {
@@ -107,22 +109,96 @@ public sealed partial class MainWindow : Window
         var isBusy = snapshot.IsBusy;
         BusyOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
         MainNavigation.IsEnabled = !isBusy;
+        BusyCancelButton.IsEnabled = snapshot.State == OperationState.Running;
         StatusProgressRing.IsActive = isBusy;
         StatusProgressRing.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
         StatusGlyph.Visibility = isBusy ? Visibility.Collapsed : Visibility.Visible;
         StatusGlyph.Glyph = snapshot.State switch
         {
             OperationState.Completed => "\uE73E",
+            OperationState.Cancelled => "\uE711",
             OperationState.Failed => "\uEA39",
             _ => "\uE946"
         };
+
+        if (_closeAfterCancellation && !isBusy)
+        {
+            _closeAfterCancellation = false;
+            Close();
+        }
     }
 
-    private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    private async void OnCancelOperationClick(object sender, RoutedEventArgs args)
+    {
+        await ConfirmCancellationAsync(closeWhenFinished: false);
+    }
+
+    private async void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
         if (App.Current.Services.OperationCoordinator.Current.IsBusy)
         {
             args.Cancel = true;
+            await ConfirmCancellationAsync(closeWhenFinished: true);
+        }
+    }
+
+    private async Task ConfirmCancellationAsync(bool closeWhenFinished)
+    {
+        if (_cancellationDialogOpen)
+        {
+            return;
+        }
+
+        var coordinator = App.Current.Services.OperationCoordinator;
+        if (!coordinator.Current.IsBusy)
+        {
+            if (closeWhenFinished)
+            {
+                Close();
+            }
+
+            return;
+        }
+
+        _cancellationDialogOpen = true;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = "Cancel current Git operation?",
+                Content = new TextBlock
+                {
+                    Text = closeWhenFinished
+                        ? "GitTool will stop the active Git process, finish safe clone cleanup, and then close."
+                        : "GitTool will stop the active Git process and finish safe clone cleanup before unlocking the app.",
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 480
+                },
+                PrimaryButtonText = closeWhenFinished ? "Cancel and close" : "Cancel operation",
+                CloseButtonText = "Keep running",
+                DefaultButton = ContentDialogButton.Close
+            };
+
+            var decision = await dialog.ShowAsync();
+            if (decision != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            BusyCancelButton.IsEnabled = false;
+            _closeAfterCancellation |= closeWhenFinished;
+            coordinator.CancelCurrentOperation();
+
+            if (closeWhenFinished && !coordinator.Current.IsBusy)
+            {
+                _closeAfterCancellation = false;
+                Close();
+            }
+        }
+        finally
+        {
+            _cancellationDialogOpen = false;
         }
     }
 

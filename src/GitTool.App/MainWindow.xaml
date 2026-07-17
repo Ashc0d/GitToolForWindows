@@ -11,7 +11,7 @@
         <MicaBackdrop Kind="BaseAlt" />
     </Window.SystemBackdrop>
 
-    <Grid Background="Transparent">
+    <Grid x:Name="RootGrid" Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="48" />
             <RowDefinition Height="*" />
@@ -152,7 +152,16 @@
                     <TextBlock
                         HorizontalAlignment="Center"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                        Text="The app will unlock when Git finishes." />
+                        Text="The app stays locked until Git exits and cleanup finishes." />
+                    <Button
+                        x:Name="BusyCancelButton"
+                        HorizontalAlignment="Center"
+                        Click="OnCancelOperationClick">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <SymbolIcon Symbol="Cancel" />
+                            <TextBlock Text="Cancel operation" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Border>
         </Grid>

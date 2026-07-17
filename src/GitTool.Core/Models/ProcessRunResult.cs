@@ -6,7 +6,8 @@ public sealed record ProcessRunResult(
     string StandardOutput,
     string StandardError,
     bool TimedOut = false,
+    bool IsCancelled = false,
     string StartError = "")
 {
-    public bool IsSuccess => Started && !TimedOut && ExitCode == 0;
+    public bool IsSuccess => Started && !TimedOut && !IsCancelled && ExitCode == 0;
 }

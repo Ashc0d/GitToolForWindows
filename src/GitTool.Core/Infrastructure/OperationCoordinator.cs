@@ -6,7 +6,9 @@ public sealed class OperationCoordinator
 {
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private readonly object _snapshotLock = new();
+    private readonly object _statusChangeLock = new();
     private OperationSnapshot _current = OperationSnapshot.Idle;
+    private CancellationTokenSource? _activeCancellation;
 
     public event EventHandler<OperationSnapshot>? StatusChanged;
 
@@ -26,16 +28,29 @@ public sealed class OperationCoordinator
         Func<IProgress<string>, CancellationToken, Task<OperationResult>> operation,
         CancellationToken cancellationToken = default)
     {
-        if (!await _operationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        bool lockTaken;
+        try
+        {
+            lockTaken = await _operationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return OperationResult.Cancelled();
+        }
+
+        if (!lockTaken)
         {
             return OperationResult.Failure(
                 "Another Git operation is already running.",
                 "Wait for the current operation to finish before starting another one.");
         }
 
+        using var operationCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
         try
         {
-            Update(new OperationSnapshot(
+            SetActiveOperation(operationCancellation, new OperationSnapshot(
                 OperationState.Running,
                 title,
                 "Preparing…",
@@ -45,22 +60,18 @@ public sealed class OperationCoordinator
             {
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
-                    Update(new OperationSnapshot(
-                        OperationState.Running,
-                        title,
-                        detail,
-                        DateTimeOffset.Now));
+                    UpdateRunningProgress(operationCancellation, title, detail);
                 }
             });
 
             OperationResult result;
             try
             {
-                result = await operation(progress, cancellationToken).ConfigureAwait(false);
+                result = await operation(progress, operationCancellation.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (operationCancellation.IsCancellationRequested)
             {
-                result = OperationResult.Failure("The operation was cancelled.");
+                result = OperationResult.Cancelled();
             }
             catch (Exception exception)
             {
@@ -69,9 +80,23 @@ public sealed class OperationCoordinator
                     exception.ToString());
             }
 
-            Update(new OperationSnapshot(
-                result.IsSuccess ? OperationState.Completed : OperationState.Failed,
-                title,
+            if (operationCancellation.IsCancellationRequested && !result.IsCancelled)
+            {
+                result = OperationResult.Cancelled(
+                    standardError: result.StandardError,
+                    standardOutput: result.StandardOutput,
+                    exitCode: result.ExitCode);
+            }
+
+            var finalState = result.IsCancelled
+                ? OperationState.Cancelled
+                : result.IsSuccess
+                    ? OperationState.Completed
+                    : OperationState.Failed;
+
+            CompleteOperation(operationCancellation, new OperationSnapshot(
+                finalState,
+                result.IsCancelled ? "Operation cancelled" : title,
                 result.Summary,
                 DateTimeOffset.Now));
 
@@ -79,17 +104,127 @@ public sealed class OperationCoordinator
         }
         finally
         {
+            ClearActiveOperation(operationCancellation);
             _operationLock.Release();
         }
     }
 
-    private void Update(OperationSnapshot snapshot)
+    public bool CancelCurrentOperation()
+    {
+        CancellationTokenSource cancellation;
+        OperationSnapshot snapshot;
+
+        lock (_statusChangeLock)
+        {
+            lock (_snapshotLock)
+            {
+                if (_activeCancellation is null || _current.State != OperationState.Running)
+                {
+                    return false;
+                }
+
+                cancellation = _activeCancellation;
+                snapshot = new OperationSnapshot(
+                    OperationState.Cancelling,
+                    _current.Title,
+                    "Cancelling… waiting for Git to stop safely.",
+                    DateTimeOffset.Now);
+                _current = snapshot;
+            }
+
+            StatusChanged?.Invoke(this, snapshot);
+        }
+
+        try
+        {
+            cancellation.Cancel();
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            // The operation completed between publishing Cancelling and signalling it.
+            return false;
+        }
+        catch (AggregateException)
+        {
+            // Cancellation is still requested even if an operation registered a faulty callback.
+            return true;
+        }
+    }
+
+    private void SetActiveOperation(
+        CancellationTokenSource cancellation,
+        OperationSnapshot snapshot)
+    {
+        lock (_statusChangeLock)
+        {
+            lock (_snapshotLock)
+            {
+                _activeCancellation = cancellation;
+                _current = snapshot;
+            }
+
+            StatusChanged?.Invoke(this, snapshot);
+        }
+    }
+
+    private void UpdateRunningProgress(
+        CancellationTokenSource cancellation,
+        string title,
+        string detail)
+    {
+        OperationSnapshot snapshot;
+
+        lock (_statusChangeLock)
+        {
+            lock (_snapshotLock)
+            {
+                if (!ReferenceEquals(_activeCancellation, cancellation)
+                    || _current.State != OperationState.Running)
+                {
+                    return;
+                }
+
+                snapshot = new OperationSnapshot(
+                    OperationState.Running,
+                    title,
+                    detail,
+                    DateTimeOffset.Now);
+                _current = snapshot;
+            }
+
+            StatusChanged?.Invoke(this, snapshot);
+        }
+    }
+
+    private void CompleteOperation(
+        CancellationTokenSource cancellation,
+        OperationSnapshot snapshot)
+    {
+        lock (_statusChangeLock)
+        {
+            lock (_snapshotLock)
+            {
+                if (ReferenceEquals(_activeCancellation, cancellation))
+                {
+                    _activeCancellation = null;
+                }
+
+                _current = snapshot;
+            }
+
+            StatusChanged?.Invoke(this, snapshot);
+        }
+    }
+
+    private void ClearActiveOperation(CancellationTokenSource cancellation)
     {
         lock (_snapshotLock)
         {
-            _current = snapshot;
+            if (ReferenceEquals(_activeCancellation, cancellation))
+            {
+                _activeCancellation = null;
+            }
         }
-
-        StatusChanged?.Invoke(this, snapshot);
     }
 }

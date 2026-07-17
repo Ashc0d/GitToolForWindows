@@ -6,9 +6,11 @@
 
 The window listens to `OperationCoordinator.StatusChanged`. This keeps status presentation separate from Git execution and guarantees that clone, pull, and any submodule follow-up remain one indivisible UI operation.
 
+`OperationCoordinator.CancelCurrentOperation()` signals the linked cancellation source for the active slot and publishes `Cancelling` immediately. The overlay Cancel button and window close button share one confirmation flow. A confirmed close waits for process shutdown and cleanup before closing. Deliberate cancellation is neutral: it clears activity state and uses an informational result instead of an error dialog or attention notification. Cleanup trouble is surfaced as a warning with the remaining path.
+
 ## Git execution
 
-`ProcessRunner` is the only raw process boundary. It uses `ProcessStartInfo.ArgumentList`, redirects standard output/error, streams progress lines, caps captured diagnostics, and supports timeouts. No operation invokes PowerShell, `cmd.exe`, or a shell-built command string.
+`ProcessRunner` is the only raw process boundary. It uses `ProcessStartInfo.ArgumentList`, redirects standard output/error, streams progress lines, caps captured diagnostics, and supports timeouts. Cancellation kills the entire process tree, waits for process exit, and drains both output readers before returning. Timeouts use the same safe shutdown mechanics but remain failure results. No operation invokes PowerShell, `cmd.exe`, or a shell-built command string.
 
 `GitClient` owns clone and repository inspection:
 
@@ -16,6 +18,8 @@ The window listens to `OperationCoordinator.StatusChanged`. This keeps status pr
 2. `GitUrlResolver` normalizes GitHub HTTPS, SSH, and `owner/repository` inputs.
 3. SSH is selected only when GitHub reports successful authentication; otherwise HTTPS is selected.
 4. The destination path is normalized and checked before `git clone` starts.
+
+Clone records whether its resolved target existed before Git started. After cancellation, it recursively removes only an absent-before-start target created by that clone. A pre-existing empty target and the selected destination root are never deleted.
 
 ## Adding repository operations
 

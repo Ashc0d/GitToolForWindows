@@ -64,7 +64,18 @@ public sealed partial class RepositoryPage : Page
                 progress,
                 cancellationToken));
 
-        if (result.IsSuccess)
+        if (result.IsCancelled)
+        {
+            RepositoryInfoBar.Severity = result.HasCancellationWarning
+                ? InfoBarSeverity.Warning
+                : InfoBarSeverity.Informational;
+            RepositoryInfoBar.Title = result.HasCancellationWarning
+                ? "Cancelled with a cleanup warning"
+                : "Operation cancelled";
+            RepositoryInfoBar.Message = result.Summary;
+            RepositoryInfoBar.IsOpen = true;
+        }
+        else if (result.IsSuccess)
         {
             RepositoryInfoBar.Severity = InfoBarSeverity.Success;
             RepositoryInfoBar.Title = "Operation complete";

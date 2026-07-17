@@ -17,6 +17,11 @@ public sealed class ProcessRunner
         CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return new ProcessRunResult(false, -1, "", "", IsCancelled: true);
+        }
+
         using var process = new Process
         {
             StartInfo = CreateStartInfo(fileName, arguments, workingDirectory),
@@ -44,34 +49,52 @@ public sealed class ProcessRunner
         var outputTask = PumpOutputAsync(process.StandardOutput, standardOutput, progress);
         var errorTask = PumpOutputAsync(process.StandardError, standardError, progress);
         var waitTask = process.WaitForExitAsync(CancellationToken.None);
+        var cancellationSignal = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellationRegistration = cancellationToken.Register(
+            static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true),
+            cancellationSignal);
+        var timeoutTask = timeout is null
+            ? Task.Delay(Timeout.InfiniteTimeSpan)
+            : Task.Delay(timeout.Value);
+
+        var completedTask = await Task.WhenAny(
+                waitTask,
+                cancellationSignal.Task,
+                timeoutTask)
+            .ConfigureAwait(false);
+
         var timedOut = false;
+        var cancelled = false;
+        string? shutdownError = null;
 
-        if (timeout is null)
+        if (completedTask == cancellationSignal.Task)
         {
-            await waitTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            cancelled = true;
+            shutdownError = TryKillProcessTree(process);
+            await waitTask.ConfigureAwait(false);
         }
-        else
+        else if (completedTask == timeoutTask)
         {
-            var delayTask = Task.Delay(timeout.Value, cancellationToken);
-            var completedTask = await Task.WhenAny(waitTask, delayTask).ConfigureAwait(false);
-            if (completedTask != waitTask)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                timedOut = true;
-                TryKillProcessTree(process);
-                await waitTask.ConfigureAwait(false);
-            }
+            timedOut = true;
+            shutdownError = TryKillProcessTree(process);
+            await waitTask.ConfigureAwait(false);
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
         await Task.WhenAll(outputTask, errorTask).ConfigureAwait(false);
+
+        if (!string.IsNullOrWhiteSpace(shutdownError))
+        {
+            standardError.AppendLine(shutdownError);
+        }
 
         return new ProcessRunResult(
             true,
             process.ExitCode,
             standardOutput.ToString(),
             standardError.ToString(),
-            timedOut);
+            timedOut,
+            cancelled);
     }
 
     private static ProcessStartInfo CreateStartInfo(
@@ -120,7 +143,7 @@ public sealed class ProcessRunner
         }
     }
 
-    private static void TryKillProcessTree(Process process)
+    private static string? TryKillProcessTree(Process process)
     {
         try
         {
@@ -128,10 +151,27 @@ public sealed class ProcessRunner
             {
                 process.Kill(true);
             }
+
+            return null;
         }
-        catch
+        catch (Exception exception) when (
+            exception is InvalidOperationException
+                or NotSupportedException
+                or Win32Exception)
         {
-            // The process may have exited between the checks.
+            try
+            {
+                if (process.HasExited)
+                {
+                    return null;
+                }
+            }
+            catch
+            {
+                // Preserve the original shutdown error below.
+            }
+
+            return $"The process tree could not be stopped: {exception.Message}";
         }
     }
 }

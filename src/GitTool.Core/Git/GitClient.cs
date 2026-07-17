@@ -7,19 +7,22 @@ public sealed class GitClient
 {
     private readonly ProcessRunner _processRunner;
     private readonly GitUrlResolver _urlResolver;
-    private readonly GitHubSshProbe _sshProbe;
+    private readonly IGitHubSshProbe _sshProbe;
     private readonly IAppLogger _logger;
+    private readonly string _gitExecutable;
 
     public GitClient(
         ProcessRunner processRunner,
         GitUrlResolver urlResolver,
-        GitHubSshProbe sshProbe,
-        IAppLogger logger)
+        IGitHubSshProbe sshProbe,
+        IAppLogger logger,
+        string gitExecutable = "git")
     {
         _processRunner = processRunner;
         _urlResolver = urlResolver;
         _sshProbe = sshProbe;
         _logger = logger;
+        _gitExecutable = gitExecutable;
     }
 
     public async Task<OperationResult> CloneAsync(
@@ -41,7 +44,10 @@ public sealed class GitClient
         {
             Directory.CreateDirectory(request.DestinationRoot);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or System.Security.SecurityException)
         {
             return OperationResult.Failure(
                 "The destination folder could not be created or accessed.",
@@ -67,11 +73,19 @@ public sealed class GitClient
             return OperationResult.Failure("The repository name produces an unsafe destination path.");
         }
 
+        if (File.Exists(targetPath))
+        {
+            return OperationResult.Failure(
+                $"The destination '{targetPath}' already exists as a file.");
+        }
+
         if (Directory.Exists(targetPath) && Directory.EnumerateFileSystemEntries(targetPath).Any())
         {
             return OperationResult.Failure(
                 $"The destination '{targetPath}' already exists and is not empty.");
         }
+
+        var targetWasAbsentBeforeClone = !Directory.Exists(targetPath);
 
         var transportName = repository.Transport switch
         {
@@ -92,12 +106,20 @@ public sealed class GitClient
         _logger.Info($"Cloning '{repository.RepositoryName}' using {transportName} into '{targetPath}'.");
 
         var result = await _processRunner.RunAsync(
-                "git",
+                _gitExecutable,
                 arguments,
                 request.DestinationRoot,
                 progress,
                 cancellationToken)
             .ConfigureAwait(false);
+
+        if (result.IsCancelled)
+        {
+            return BuildCancelledCloneResult(
+                targetPath,
+                targetWasAbsentBeforeClone,
+                result);
+        }
 
         if (!result.Started)
         {
@@ -205,7 +227,7 @@ public sealed class GitClient
         CancellationToken cancellationToken)
     {
         return await _processRunner.RunAsync(
-                "git",
+                _gitExecutable,
                 arguments,
                 workingDirectory,
                 null,
@@ -216,13 +238,70 @@ public sealed class GitClient
 
     private static string? GetSafeTargetPath(string destinationRoot, string repositoryName)
     {
-        var root = Path.GetFullPath(destinationRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var root = Path.GetFullPath(destinationRoot);
         var target = Path.GetFullPath(Path.Combine(root, repositoryName));
-        var rootPrefix = root + Path.DirectorySeparatorChar;
+        var rootPrefix = Path.EndsInDirectorySeparator(root)
+            ? root
+            : root + Path.DirectorySeparatorChar;
 
         return target.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
             ? target
             : null;
+    }
+
+    private OperationResult BuildCancelledCloneResult(
+        string targetPath,
+        bool targetWasAbsentBeforeClone,
+        ProcessRunResult processResult)
+    {
+        if (!targetWasAbsentBeforeClone)
+        {
+            _logger.Info($"Clone was cancelled; preserving pre-existing destination '{targetPath}'.");
+            return OperationResult.Cancelled(
+                "Clone was cancelled. The pre-existing destination was preserved.",
+                processResult.StandardError,
+                processResult.StandardOutput,
+                processResult.ExitCode);
+        }
+
+        if (!Directory.Exists(targetPath))
+        {
+            return OperationResult.Cancelled(
+                "Clone was cancelled before an incomplete repository was created.",
+                processResult.StandardError,
+                processResult.StandardOutput,
+                processResult.ExitCode);
+        }
+
+        try
+        {
+            Directory.Delete(targetPath, true);
+            _logger.Info($"Removed incomplete clone destination '{targetPath}' after cancellation.");
+            return OperationResult.Cancelled(
+                "Clone was cancelled and the incomplete repository was removed.",
+                processResult.StandardError,
+                processResult.StandardOutput,
+                processResult.ExitCode,
+                new OperationCancellationMetadata(true, true));
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or System.Security.SecurityException)
+        {
+            var cleanupError =
+                $"Cleanup could not remove '{targetPath}': {exception.Message}";
+            var diagnostics = string.IsNullOrWhiteSpace(processResult.StandardError)
+                ? cleanupError
+                : processResult.StandardError.TrimEnd() + Environment.NewLine + cleanupError;
+
+            _logger.Warning(cleanupError);
+            return OperationResult.Cancelled(
+                $"Clone was cancelled, but the incomplete repository remains at '{targetPath}'.",
+                diagnostics,
+                processResult.StandardOutput,
+                processResult.ExitCode,
+                new OperationCancellationMetadata(true, false, targetPath));
+        }
     }
 }

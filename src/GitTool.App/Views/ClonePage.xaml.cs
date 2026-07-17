@@ -48,7 +48,18 @@ public sealed partial class ClonePage : Page
                 progress,
                 cancellationToken));
 
-        if (result.IsSuccess)
+        if (result.IsCancelled)
+        {
+            ResultInfoBar.Severity = result.HasCancellationWarning
+                ? InfoBarSeverity.Warning
+                : InfoBarSeverity.Informational;
+            ResultInfoBar.Title = result.HasCancellationWarning
+                ? "Cancelled with a cleanup warning"
+                : "Clone cancelled";
+            ResultInfoBar.Message = result.Summary;
+            ResultInfoBar.IsOpen = true;
+        }
+        else if (result.IsSuccess)
         {
             ResultInfoBar.Severity = InfoBarSeverity.Success;
             ResultInfoBar.Title = "Clone complete";

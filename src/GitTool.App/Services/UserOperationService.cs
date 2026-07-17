@@ -33,6 +33,21 @@ public sealed class UserOperationService
         _badgeService.ShowActivity();
         var result = await _coordinator.ExecuteAsync(title, operation, cancellationToken);
 
+        if (result.IsCancelled)
+        {
+            _badgeService.Clear();
+            if (result.HasCancellationWarning)
+            {
+                _logger.Warning($"{title}: {result.Summary}{Environment.NewLine}{result.Diagnostics}");
+            }
+            else
+            {
+                _logger.Info(result.Summary);
+            }
+
+            return result;
+        }
+
         if (result.IsSuccess)
         {
             _badgeService.Clear();

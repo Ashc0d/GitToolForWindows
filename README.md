@@ -9,7 +9,9 @@ GitTool `0.1.0` is a native Windows Git utility built with C#, .NET 10 LTS, WinU
 - Select and validate a local Git working tree, then inspect its branch, origin, and changed-file count.
 - Fetch all remotes, pull with `--ff-only`, update submodules when requested, and push committed changes.
 - Block the application surface for the full lifetime of every Git operation, including submodule work.
+- Cancel active Git work from the blocking overlay or window close confirmation; process trees are stopped and app-created partial clone folders are removed safely.
 - Show live operation text, native taskbar activity/error badges, in-app error dialogs, and optional Windows notifications.
+- Render with Per-Monitor V2 DPI awareness so WinUI redraws crisply when the window moves between displays with different scaling.
 - Store centralized defaults and buffered logs under `%LOCALAPPDATA%\GitTool`.
 
 Logs are queued in memory and written only every five minutes, when an error occurs, and when the app closes. Fourteen daily log files are retained.
@@ -18,7 +20,7 @@ Logs are queued in memory and written only every five minutes, when an error occ
 
 - Windows 11 for the full Mica Alt appearance (Windows 10 20H1 or later is the package minimum).
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) — this solution is pinned to `10.0.302` in `global.json`.
-- Visual Studio with the Windows application development tools when using the designer or F5 deployment.
+- Visual Studio with the **WinUI application development** workload when using the designer or packaged F5 deployment.
 - [Git for Windows](https://git-scm.com/downloads/win), available on `PATH`.
 - Optional: an SSH key/agent accepted by GitHub for SSH cloning.
 
@@ -52,7 +54,7 @@ When dependencies have already been restored and the machine is temporarily offl
 
 - `src/GitTool.App` — WinUI 3 shell, pages, dialogs, pickers, notifications, and taskbar badges.
 - `src/GitTool.Core` — process execution, Git URL selection, clone/inspection, operation registry, settings, and logging.
-- `tests/GitTool.Core.Tests` — dependency-free executable checks for URL normalization and local fetch/pull/push behavior.
+- `tests/GitTool.Core.Tests` — dependency-free executable checks for URL normalization, process-tree cancellation, safe clone cleanup, coordinator reuse, and local fetch/pull/push behavior.
 - `docs/ARCHITECTURE.md` — extension points and operation lifecycle.
 
 All process arguments are passed through `ProcessStartInfo.ArgumentList`; repository paths and URLs are never concatenated into a command shell string.
@@ -62,4 +64,5 @@ All process arguments are passed through `ProcessStartInfo.ArgumentList`; reposi
 - [WinUI Gallery](https://github.com/microsoft/WinUI-Gallery)
 - [Windows app design guidelines](https://learn.microsoft.com/windows/apps/design/)
 - [System backdrops and Mica](https://learn.microsoft.com/windows/apps/develop/ui/system-backdrops)
+- [High-DPI desktop application development](https://learn.microsoft.com/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows)
 - [Windows notifications overview](https://learn.microsoft.com/windows/apps/develop/notifications/)

@@ -2,7 +2,7 @@ using GitTool.Core.Infrastructure;
 
 namespace GitTool.Core.Git;
 
-public sealed class GitHubSshProbe
+public sealed class GitHubSshProbe : IGitHubSshProbe
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(12);
     private readonly ProcessRunner _processRunner;
@@ -22,6 +22,11 @@ public sealed class GitHubSshProbe
                 cancellationToken,
                 ProbeTimeout)
             .ConfigureAwait(false);
+
+        if (result.IsCancelled)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
 
         if (!result.Started || result.TimedOut)
         {

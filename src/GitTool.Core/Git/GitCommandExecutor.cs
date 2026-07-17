@@ -7,11 +7,16 @@ public sealed class GitCommandExecutor : IGitCommandExecutor
 {
     private readonly ProcessRunner _processRunner;
     private readonly IAppLogger _logger;
+    private readonly string _gitExecutable;
 
-    public GitCommandExecutor(ProcessRunner processRunner, IAppLogger logger)
+    public GitCommandExecutor(
+        ProcessRunner processRunner,
+        IAppLogger logger,
+        string gitExecutable = "git")
     {
         _processRunner = processRunner;
         _logger = logger;
+        _gitExecutable = gitExecutable;
     }
 
     public async Task<OperationResult> RunRepositoryCommandAsync(
@@ -26,12 +31,21 @@ public sealed class GitCommandExecutor : IGitCommandExecutor
         _logger.Info($"Starting Git {operationName} in '{repositoryPath}'.");
 
         var result = await _processRunner.RunAsync(
-                "git",
+                _gitExecutable,
                 commandArguments,
                 repositoryPath,
                 progress,
                 cancellationToken)
             .ConfigureAwait(false);
+
+        if (result.IsCancelled)
+        {
+            return OperationResult.Cancelled(
+                $"Git {operationName} was cancelled.",
+                result.StandardError,
+                result.StandardOutput,
+                result.ExitCode);
+        }
 
         if (!result.Started)
         {
