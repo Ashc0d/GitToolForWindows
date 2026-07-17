@@ -14,6 +14,20 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <UseCrtSDKReferenceStaticWarning>false</UseCrtSDKReferenceStaticWarning>
+    <!--
+      Windows App SDK 2.2's XAML target probes the optional MSVC folder whenever
+      Visual Studio sets VsInstallRoot, even for managed C# projects. Supplying
+      existing managed-tool paths prevents that native-only probe.
+    -->
+    <VCInstallPath32 Condition="'$(VCInstallPath32)' == ''">$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll</VCInstallPath32>
+    <VCInstallPath64 Condition="'$(VCInstallPath64)' == ''">$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll</VCInstallPath64>
+    <!--
+      The MSIX target performs a second MSVC lookup for mspdbcmf.exe before it
+      checks whether symbol packages are enabled. A non-empty, non-existent
+      path skips that optional lookup and cannot be used to generate symbols.
+    -->
+    <MsPdbCmfExeFullpath>$(MSBuildProjectDirectory)\.disabled\mspdbcmf.exe</MsPdbCmfExeFullpath>
+    <AppxSymbolPackageEnabled>false</AppxSymbolPackageEnabled>
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
     <GenerateAppInstallerFile>false</GenerateAppInstallerFile>
   </PropertyGroup>

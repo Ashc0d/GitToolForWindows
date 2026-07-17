@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "GitTool.App (Development)": {
+      "commandName": "Project",
+      "commandLineArgs": "",
+      "nativeDebugging": false
+    },
+    "GitTool.App (Package)": {
+      "commandName": "MsixPackage",
+      "commandLineArgs": "",
+      "alwaysReinstallApp": false,
+      "remoteDebugEnabled": false,
+      "allowLocalNetworkLoopbackProperty": true,
+      "authenticationMode": "Windows",
+      "doNotLaunchApp": false,
+      "remoteDebugMachine": "",
+      "nativeDebugging": false
+    }
+  }
+}
