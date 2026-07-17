@@ -1,0 +1,11 @@
+[
+  {
+    "Name": "GitTool",
+    "Projects": [
+      {
+        "Path": "src\\GitTool.App\\GitTool.App.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

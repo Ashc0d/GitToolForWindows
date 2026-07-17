@@ -1,0 +1,9 @@
+.vs/
+bin/
+obj/
+AppPackages/
+*.user
+*.suo
+*.pfx
+TestResults/
+artifacts/

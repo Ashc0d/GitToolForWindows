@@ -1,0 +1,160 @@
+<Window
+    x:Class="GitTool.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="GitTool">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop Kind="BaseAlt" />
+    </Window.SystemBackdrop>
+
+    <Grid Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="48" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="46" />
+        </Grid.RowDefinitions>
+
+        <Grid
+            x:Name="AppTitleBar"
+            Grid.Row="0"
+            Padding="16,0"
+            Background="Transparent">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Image Width="22" Height="22" Source="Assets/AppIcon.png" />
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    Text="GitTool" />
+            </StackPanel>
+        </Grid>
+
+        <NavigationView
+            x:Name="MainNavigation"
+            Grid.Row="1"
+            Background="Transparent"
+            IsBackButtonVisible="Collapsed"
+            IsSettingsVisible="False"
+            IsTitleBarAutoPaddingEnabled="False"
+            OpenPaneLength="250"
+            PaneDisplayMode="Left"
+            PaneTitle="Git workflows"
+            SelectionChanged="OnNavigationSelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="Clone repository" Tag="clone">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Download" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Manage repository" Tag="repository">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Folder" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Settings" Tag="settings">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Setting" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+
+            <Frame x:Name="ContentFrame" Background="Transparent" />
+        </NavigationView>
+
+        <Border
+            Grid.Row="2"
+            Padding="16,0"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="0,1,0,0">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ProgressRing
+                    x:Name="StatusProgressRing"
+                    Width="18"
+                    Height="18"
+                    IsActive="False"
+                    Visibility="Collapsed" />
+                <FontIcon
+                    x:Name="StatusGlyph"
+                    Grid.Column="0"
+                    FontSize="16"
+                    Glyph="&#xE73E;" />
+                <TextBlock
+                    x:Name="StatusTitleText"
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    FontWeight="SemiBold"
+                    Text="Ready" />
+                <TextBlock
+                    x:Name="StatusDetailText"
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="No Git operation is running."
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    Grid.Column="3"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Text="Git for Windows" />
+            </Grid>
+        </Border>
+
+        <Grid
+            x:Name="BusyOverlay"
+            Grid.Row="1"
+            Grid.RowSpan="2"
+            Canvas.ZIndex="100"
+            Visibility="Collapsed">
+            <Border
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                Opacity="0.82" />
+            <Border
+                MaxWidth="520"
+                Padding="32"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12">
+                <StackPanel HorizontalAlignment="Center" Spacing="16">
+                    <ProgressRing Width="44" Height="44" IsActive="True" />
+                    <TextBlock
+                        x:Name="BusyTitleText"
+                        HorizontalAlignment="Center"
+                        FontSize="20"
+                        FontWeight="SemiBold"
+                        Text="Working…"
+                        TextAlignment="Center" />
+                    <TextBlock
+                        x:Name="BusyDetailText"
+                        MaxWidth="430"
+                        HorizontalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Preparing…"
+                        TextAlignment="Center"
+                        TextTrimming="CharacterEllipsis"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Text="The app will unlock when Git finishes." />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
