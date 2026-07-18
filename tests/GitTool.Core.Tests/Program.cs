@@ -206,6 +206,24 @@ static async Task RunCloneCancellationCleanupTestsAsync()
             AssertTrue(!Directory.Exists(targetPath), "The app-created partial clone directory was not removed.");
         }
 
+        Environment.SetEnvironmentVariable("GITTOOL_TEST_SHIM_MODE", "slow-readonly");
+        using (var cancellation = new CancellationTokenSource())
+        {
+            var cloneReady = CreateProgressSignal("CLONE_READY=");
+            var cloneTask = client.CloneAsync(request, cloneReady.Progress, cancellation.Token);
+            await cloneReady.Signal.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await cancellation.CancelAsync();
+            var result = await cloneTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            AssertTrue(result.IsCancelled, "A clone with a read-only pack file was not cancelled.");
+            AssertTrue(
+                result.Cancellation is { CleanupAttempted: true, CleanupSucceeded: true },
+                "A read-only Git pack artifact prevented cancelled-clone cleanup.");
+            AssertTrue(
+                !Directory.Exists(targetPath),
+                "The clone target containing a read-only Git pack artifact was not removed.");
+        }
+
         Environment.SetEnvironmentVariable("GITTOOL_TEST_SHIM_MODE", "complete");
         var retry = await client.CloneAsync(request, null, CancellationToken.None);
         AssertTrue(retry.IsSuccess, "The clone destination could not be reused after cancellation cleanup.");
@@ -319,6 +337,16 @@ static async Task RunGitShimAsync(string[] arguments)
         Directory.CreateDirectory(targetPath);
         var partialPath = Path.Combine(targetPath, ".gittool-partial");
         await File.WriteAllTextAsync(partialPath, "partial clone data");
+
+        if (mode == "slow-readonly")
+        {
+            var packDirectory = Path.Combine(targetPath, ".git", "objects", "pack");
+            Directory.CreateDirectory(packDirectory);
+            var packPath = Path.Combine(packDirectory, "tmp_pack_GitToolTest");
+            await File.WriteAllTextAsync(packPath, "partial pack data");
+            File.SetAttributes(packPath, File.GetAttributes(packPath) | FileAttributes.ReadOnly);
+        }
+
         Console.WriteLine($"CLONE_READY={targetPath}");
         Console.Out.Flush();
 

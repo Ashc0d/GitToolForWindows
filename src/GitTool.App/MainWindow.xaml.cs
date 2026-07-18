@@ -122,11 +122,6 @@ public sealed partial class MainWindow : Window
             OperationState.Failed => "\uEA39",
             _ => "\uE946"
         };
-
-        if (_closeRequested && !isBusy)
-        {
-            _ = ShutdownAndCloseAsync();
-        }
     }
 
     private async void OnCancelOperationClick(object sender, RoutedEventArgs args)
@@ -148,13 +143,13 @@ public sealed partial class MainWindow : Window
         var snapshot = App.Current.Services.OperationCoordinator.Current;
         if (!snapshot.IsBusy)
         {
-            DispatcherQueue.TryEnqueue(() => _ = ShutdownAndCloseAsync());
+            DispatcherQueue.TryEnqueue(RequestCloseAfterCurrentOperation);
             return;
         }
 
         if (snapshot.State == OperationState.Cancelling)
         {
-            _closeRequested = true;
+            DispatcherQueue.TryEnqueue(RequestCloseAfterCurrentOperation);
             return;
         }
 
@@ -173,8 +168,7 @@ public sealed partial class MainWindow : Window
         {
             if (closeWhenFinished)
             {
-                _closeRequested = true;
-                await ShutdownAndCloseAsync();
+                RequestCloseAfterCurrentOperation();
             }
 
             return;
@@ -207,18 +201,34 @@ public sealed partial class MainWindow : Window
             }
 
             BusyCancelButton.IsEnabled = false;
-            _closeRequested |= closeWhenFinished;
             coordinator.CancelCurrentOperation();
 
-            if (closeWhenFinished && !coordinator.Current.IsBusy)
+            if (closeWhenFinished)
             {
-                await ShutdownAndCloseAsync();
+                RequestCloseAfterCurrentOperation();
             }
         }
         finally
         {
             _cancellationDialogOpen = false;
         }
+    }
+
+    private void RequestCloseAfterCurrentOperation()
+    {
+        if (_closeRequested || _shutdownStarted)
+        {
+            return;
+        }
+
+        _closeRequested = true;
+        _ = CloseAfterCurrentOperationAsync();
+    }
+
+    private async Task CloseAfterCurrentOperationAsync()
+    {
+        await App.Current.Services.UserOperations.WaitForCurrentOperationUiCompletionAsync();
+        await ShutdownAndCloseAsync();
     }
 
     private async Task ShutdownAndCloseAsync()

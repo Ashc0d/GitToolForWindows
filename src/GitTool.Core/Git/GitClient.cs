@@ -115,10 +115,11 @@ public sealed class GitClient
 
         if (result.IsCancelled)
         {
-            return BuildCancelledCloneResult(
-                targetPath,
-                targetWasAbsentBeforeClone,
-                result);
+            return await BuildCancelledCloneResultAsync(
+                    targetPath,
+                    targetWasAbsentBeforeClone,
+                    result)
+                .ConfigureAwait(false);
         }
 
         if (!result.Started)
@@ -249,7 +250,7 @@ public sealed class GitClient
             : null;
     }
 
-    private OperationResult BuildCancelledCloneResult(
+    private async Task<OperationResult> BuildCancelledCloneResultAsync(
         string targetPath,
         bool targetWasAbsentBeforeClone,
         ProcessRunResult processResult)
@@ -273,35 +274,88 @@ public sealed class GitClient
                 processResult.ExitCode);
         }
 
-        try
+        Exception? cleanupException = null;
+        for (var attempt = 1; attempt <= 3; attempt++)
         {
-            Directory.Delete(targetPath, true);
-            _logger.Info($"Removed incomplete clone destination '{targetPath}' after cancellation.");
-            return OperationResult.Cancelled(
-                "Clone was cancelled and the incomplete repository was removed.",
-                processResult.StandardError,
-                processResult.StandardOutput,
-                processResult.ExitCode,
-                new OperationCancellationMetadata(true, true));
+            try
+            {
+                DeleteDirectoryTreeWithoutFollowingReparsePoints(targetPath);
+                _logger.Info($"Removed incomplete clone destination '{targetPath}' after cancellation.");
+                return OperationResult.Cancelled(
+                    "Clone was cancelled and the incomplete repository was removed.",
+                    processResult.StandardError,
+                    processResult.StandardOutput,
+                    processResult.ExitCode,
+                    new OperationCancellationMetadata(true, true));
+            }
+            catch (Exception exception) when (
+                exception is IOException
+                    or UnauthorizedAccessException
+                    or System.Security.SecurityException)
+            {
+                cleanupException = exception;
+                if (attempt < 3)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt)).ConfigureAwait(false);
+                }
+            }
         }
-        catch (Exception exception) when (
-            exception is IOException
-                or UnauthorizedAccessException
-                or System.Security.SecurityException)
-        {
-            var cleanupError =
-                $"Cleanup could not remove '{targetPath}': {exception.Message}";
-            var diagnostics = string.IsNullOrWhiteSpace(processResult.StandardError)
-                ? cleanupError
-                : processResult.StandardError.TrimEnd() + Environment.NewLine + cleanupError;
 
-            _logger.Warning(cleanupError);
-            return OperationResult.Cancelled(
-                $"Clone was cancelled, but the incomplete repository remains at '{targetPath}'.",
-                diagnostics,
-                processResult.StandardOutput,
-                processResult.ExitCode,
-                new OperationCancellationMetadata(true, false, targetPath));
+        var cleanupError =
+            $"Cleanup could not remove '{targetPath}': {cleanupException?.Message ?? "Unknown cleanup error."}";
+        var diagnostics = string.IsNullOrWhiteSpace(processResult.StandardError)
+            ? cleanupError
+            : processResult.StandardError.TrimEnd() + Environment.NewLine + cleanupError;
+
+        _logger.Warning(cleanupError);
+        return OperationResult.Cancelled(
+            $"Clone was cancelled, but the incomplete repository remains at '{targetPath}'.",
+            diagnostics,
+            processResult.StandardOutput,
+            processResult.ExitCode,
+            new OperationCancellationMetadata(true, false, targetPath));
+    }
+
+    private static void DeleteDirectoryTreeWithoutFollowingReparsePoints(string directoryPath)
+    {
+        if (!Directory.Exists(directoryPath))
+        {
+            return;
+        }
+
+        var directory = new DirectoryInfo(directoryPath);
+        ClearReadOnlyAttribute(directory);
+
+        foreach (var entry in directory.EnumerateFileSystemInfos())
+        {
+            var isDirectory = entry.Attributes.HasFlag(FileAttributes.Directory);
+            var isReparsePoint = entry.Attributes.HasFlag(FileAttributes.ReparsePoint);
+
+            if (isDirectory && !isReparsePoint)
+            {
+                DeleteDirectoryTreeWithoutFollowingReparsePoints(entry.FullName);
+                continue;
+            }
+
+            ClearReadOnlyAttribute(entry);
+            if (isDirectory)
+            {
+                Directory.Delete(entry.FullName, false);
+            }
+            else
+            {
+                File.Delete(entry.FullName);
+            }
+        }
+
+        Directory.Delete(directoryPath, false);
+    }
+
+    private static void ClearReadOnlyAttribute(FileSystemInfo entry)
+    {
+        if (entry.Attributes.HasFlag(FileAttributes.ReadOnly))
+        {
+            entry.Attributes &= ~FileAttributes.ReadOnly;
         }
     }
 }

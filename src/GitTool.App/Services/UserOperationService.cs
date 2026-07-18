@@ -1,5 +1,6 @@
 using GitTool.Core.Infrastructure;
 using GitTool.Core.Models;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -11,6 +12,8 @@ public sealed class UserOperationService
     private readonly TaskbarBadgeService _badgeService;
     private readonly AppNotificationService _notificationService;
     private readonly IAppLogger _logger;
+    private readonly object _uiCompletionLock = new();
+    private Task _currentOperationUiCompletion = Task.CompletedTask;
 
     public UserOperationService(
         OperationCoordinator coordinator,
@@ -30,37 +33,69 @@ public sealed class UserOperationService
         Func<IProgress<string>, CancellationToken, Task<OperationResult>> operation,
         CancellationToken cancellationToken = default)
     {
-        _badgeService.ShowActivity();
-        var result = await _coordinator.ExecuteAsync(title, operation, cancellationToken);
+        var dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        var uiCompletion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
-        if (result.IsCancelled)
+        lock (_uiCompletionLock)
         {
-            _badgeService.Clear();
-            if (result.HasCancellationWarning)
+            _currentOperationUiCompletion = _currentOperationUiCompletion.IsCompleted
+                ? uiCompletion.Task
+                : Task.WhenAll(_currentOperationUiCompletion, uiCompletion.Task);
+        }
+
+        try
+        {
+            _badgeService.ShowActivity();
+            var result = await _coordinator.ExecuteAsync(title, operation, cancellationToken);
+
+            if (result.IsCancelled)
             {
-                _logger.Warning($"{title}: {result.Summary}{Environment.NewLine}{result.Diagnostics}");
+                _badgeService.Clear();
+                if (result.HasCancellationWarning)
+                {
+                    _logger.Warning($"{title}: {result.Summary}{Environment.NewLine}{result.Diagnostics}");
+                }
+                else
+                {
+                    _logger.Info(result.Summary);
+                }
+
+                return result;
             }
-            else
+
+            if (result.IsSuccess)
             {
+                _badgeService.Clear();
                 _logger.Info(result.Summary);
+                return result;
             }
 
-            return result;
-        }
-
-        if (result.IsSuccess)
-        {
+            _badgeService.ShowError();
+            await _logger.ErrorAsync($"{title}: {result.Summary}{Environment.NewLine}{result.Diagnostics}");
+            _notificationService.ShowAttention("GitTool needs attention", result.Summary);
+            await ShowErrorDialogAsync(xamlRoot, title, result);
             _badgeService.Clear();
-            _logger.Info(result.Summary);
             return result;
         }
+        finally
+        {
+            if (dispatcherQueue is null
+                || !dispatcherQueue.TryEnqueue(
+                    DispatcherQueuePriority.Low,
+                    () => uiCompletion.TrySetResult(true)))
+            {
+                uiCompletion.TrySetResult(true);
+            }
+        }
+    }
 
-        _badgeService.ShowError();
-        await _logger.ErrorAsync($"{title}: {result.Summary}{Environment.NewLine}{result.Diagnostics}");
-        _notificationService.ShowAttention("GitTool needs attention", result.Summary);
-        await ShowErrorDialogAsync(xamlRoot, title, result);
-        _badgeService.Clear();
-        return result;
+    internal Task WaitForCurrentOperationUiCompletionAsync()
+    {
+        lock (_uiCompletionLock)
+        {
+            return _currentOperationUiCompletion;
+        }
     }
 
     private static async Task ShowErrorDialogAsync(
