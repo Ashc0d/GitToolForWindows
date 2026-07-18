@@ -1,0 +1,164 @@
+name: GitHub Portable Release Build
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to create or update (for example, v0.1.5)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build portable Windows release
+    runs-on: windows-latest
+    env:
+      CONFIGURATION: Release
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pinned .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore solution
+        shell: pwsh
+        run: dotnet restore .\GitTool.sln -p:NuGetAudit=false
+
+      - name: Run core tests
+        shell: pwsh
+        run: dotnet run --project .\tests\GitTool.Core.Tests\GitTool.Core.Tests.csproj --configuration $env:CONFIGURATION --no-restore
+
+      - name: Determine release version
+        shell: pwsh
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+              $releaseVersion = $env:TAG_INPUT
+          }
+          elseif ($env:GITHUB_REF -like 'refs/tags/*') {
+              $releaseVersion = $env:GITHUB_REF_NAME
+          }
+          else {
+              $project = [xml](Get-Content -LiteralPath '.\src\GitTool.App\GitTool.App.csproj')
+              $releaseVersion = $project.Project.PropertyGroup.Version
+          }
+
+          if ([string]::IsNullOrWhiteSpace($releaseVersion)) {
+              throw 'Unable to determine the release version.'
+          }
+
+          "RELEASE_VERSION=$releaseVersion" >> $env:GITHUB_ENV
+          Write-Host "[INFO] Using release version $releaseVersion."
+
+      - name: Publish and package portable builds
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function info {
+              param([Parameter(Mandatory)][string]$Message)
+              Write-Host "[INFO] $Message" -ForegroundColor Blue
+          }
+
+          function ok {
+              param([Parameter(Mandatory)][string]$Message)
+              Write-Host "[OK] $Message" -ForegroundColor Green
+          }
+
+          function warn {
+              param([Parameter(Mandatory)][string]$Message)
+              Write-Host "[WARN] $Message" -ForegroundColor Yellow
+          }
+
+          function fail {
+              param([Parameter(Mandatory)][string]$Message)
+              Write-Host "[FAIL] $Message" -ForegroundColor Red
+              exit 1
+          }
+
+          function Assert-LastCommandSucceeded {
+              param([Parameter(Mandatory)][string]$Activity)
+              if ($LASTEXITCODE -ne 0) {
+                  fail "$Activity failed with exit code $LASTEXITCODE."
+              }
+          }
+
+          $releaseRoot = Join-Path $env:GITHUB_WORKSPACE 'release'
+          if (Test-Path -LiteralPath $releaseRoot) {
+              Remove-Item -LiteralPath $releaseRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $releaseRoot | Out-Null
+
+          $architectures = @(
+              @{ Rid = 'win-x64'; Label = 'x64'; Platform = 'x64' },
+              @{ Rid = 'win-arm64'; Label = 'ARM64'; Platform = 'ARM64' }
+          )
+
+          foreach ($architecture in $architectures) {
+              $stage = Join-Path $releaseRoot $architecture.Rid
+              $publish = $stage
+              $zip = Join-Path $releaseRoot "GitTool-$env:RELEASE_VERSION-$($architecture.Rid).zip"
+              New-Item -ItemType Directory -Path $publish -Force | Out-Null
+
+              info "Publishing GitTool.App for $($architecture.Rid)."
+              dotnet publish .\src\GitTool.App\GitTool.App.csproj `
+                  --configuration $env:CONFIGURATION `
+                  --runtime $architecture.Rid `
+                  --self-contained true `
+                  --no-restore `
+                  -p:Platform=$($architecture.Platform) `
+                  -p:WindowsAppSDKSelfContained=true `
+                  -p:PublishSingleFile=false `
+                  -p:PublishDir=$publish\
+              Assert-LastCommandSucceeded "Publish for $($architecture.Rid)"
+
+              $executable = Join-Path $publish 'GitTool.App.exe'
+              if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+                  fail "GitTool.App.exe was not produced for $($architecture.Rid)."
+              }
+
+              $readme = @"
+GitTool portable release ($($architecture.Label))
+
+1. Extract this ZIP to a folder.
+2. Make sure Git for Windows is installed and available on PATH.
+3. Start GitTool.App.exe.
+
+This is a portable ZIP and does not install a Start Menu entry.
+This ZIP supports Windows $($architecture.Label) ($($architecture.Rid)).
+"@
+              Set-Content -LiteralPath (Join-Path $stage 'README.txt') -Value $readme -Encoding UTF8
+
+              info "Creating GitTool-$env:RELEASE_VERSION-$($architecture.Rid).zip."
+              Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
+              if (-not (Test-Path -LiteralPath $zip -PathType Leaf) -or (Get-Item -LiteralPath $zip).Length -le 0) {
+                  fail "ZIP creation failed for $($architecture.Rid)."
+              }
+              ok "Created GitTool-$env:RELEASE_VERSION-$($architecture.Rid).zip."
+          }
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release/GitTool-${{ env.RELEASE_VERSION }}-win-x64.zip
+            release/GitTool-${{ env.RELEASE_VERSION }}-win-arm64.zip
