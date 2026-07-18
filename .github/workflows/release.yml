@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Version tag to create or update (for example, v0.1.5)'
-        required: true
+        description: 'Optional version tag to create or update (for example, v0.1.5)'
+        required: false
         type: string
 
 permissions:
@@ -47,7 +47,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and -not [string]::IsNullOrWhiteSpace($env:TAG_INPUT)) {
               $releaseVersion = $env:TAG_INPUT
           }
           elseif ($env:GITHUB_REF -like 'refs/tags/*') {
@@ -132,16 +132,16 @@ jobs:
                   fail "GitTool.App.exe was not produced for $($architecture.Rid)."
               }
 
-              $readme = @"
-GitTool portable release ($($architecture.Label))
-
-1. Extract this ZIP to a folder.
-2. Make sure Git for Windows is installed and available on PATH.
-3. Start GitTool.App.exe.
-
-This is a portable ZIP and does not install a Start Menu entry.
-This ZIP supports Windows $($architecture.Label) ($($architecture.Rid)).
-"@
+              $readme = @(
+                  "GitTool portable release ($($architecture.Label))"
+                  ''
+                  '1. Extract this ZIP to a folder.'
+                  '2. Make sure Git for Windows is installed and available on PATH.'
+                  '3. Start GitTool.App.exe.'
+                  ''
+                  'This is a portable ZIP and does not install a Start Menu entry.'
+                  "This ZIP supports Windows $($architecture.Label) ($($architecture.Rid))."
+              )
               Set-Content -LiteralPath (Join-Path $stage 'README.txt') -Value $readme -Encoding UTF8
 
               info "Creating GitTool-$env:RELEASE_VERSION-$($architecture.Rid).zip."
@@ -153,7 +153,7 @@ This ZIP supports Windows $($architecture.Label) ($($architecture.Rid)).
           }
 
       - name: Publish GitHub Release
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
