@@ -1,6 +1,8 @@
 # GitTool
 
-GitTool `0.1.0` is a native Windows Git utility built with C#, .NET 10 LTS, WinUI 3, and the stable Windows App SDK. It provides focused clone and repository-management workflows in a continuous Mica Alt shell.
+GitTool `0.1.5` is a native Windows Git utility built with C#, .NET 10 LTS, WinUI 3, and the stable Windows App SDK. It provides focused clone and repository-management workflows in a continuous Mica Alt shell.
+
+This is a vibe-coded app built to learn about agentic development and support my internal use of a Git GUI.
 
 ## Included workflows
 

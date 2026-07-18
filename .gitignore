@@ -1,4 +1,14 @@
 .vs/
+.agentic/
+.agents/
+.codex/
+.idea/
+.vscode/
+.fleet/
+.junie/
+.cursor/
+.claude/
+*.code-workspace
 bin/
 obj/
 AppPackages/
@@ -7,3 +17,6 @@ AppPackages/
 *.pfx
 TestResults/
 artifacts/
+*.log
+.env
+.env.*
