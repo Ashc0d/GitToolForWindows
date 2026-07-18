@@ -16,6 +16,7 @@ public sealed partial class MainWindow : Window
     private bool _shutdownStarted;
     private bool _cancellationDialogOpen;
     private bool _closeRequested;
+    private bool _allowClose;
 
     public MainWindow()
     {
@@ -131,11 +132,7 @@ public sealed partial class MainWindow : Window
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        // Own the complete shutdown sequence so async cancellation and logger
-        // cleanup finish before the XAML window closes.
-        args.Cancel = true;
-
-        if (_shutdownStarted)
+        if (_allowClose || _shutdownStarted)
         {
             return;
         }
@@ -143,9 +140,14 @@ public sealed partial class MainWindow : Window
         var snapshot = App.Current.Services.OperationCoordinator.Current;
         if (!snapshot.IsBusy)
         {
-            DispatcherQueue.TryEnqueue(RequestCloseAfterCurrentOperation);
+            // Let the original system close request complete naturally. Final
+            // service cleanup runs once from Window.Closed.
             return;
         }
+
+        // Active operations require an asynchronous confirmation/cancellation
+        // sequence, so only this close request is deferred.
+        args.Cancel = true;
 
         if (snapshot.State == OperationState.Cancelling)
         {
@@ -222,16 +224,36 @@ public sealed partial class MainWindow : Window
         }
 
         _closeRequested = true;
+        try
+        {
+            _appWindow.Hide();
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"GitTool could not hide the window during deferred close: {exception}");
+        }
+
         _ = CloseAfterCurrentOperationAsync();
     }
 
     private async Task CloseAfterCurrentOperationAsync()
     {
-        await App.Current.Services.UserOperations.WaitForCurrentOperationUiCompletionAsync();
-        await ShutdownAndCloseAsync();
+        try
+        {
+            await App.Current.Services.UserOperations.WaitForCurrentOperationUiCompletionAsync();
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"GitTool operation UI settlement failed during close: {exception}");
+        }
+
+        _allowClose = true;
+        Close();
     }
 
-    private async Task ShutdownAndCloseAsync()
+    private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         if (_shutdownStarted)
         {
@@ -244,7 +266,12 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            await App.Current.Services.ShutdownAsync();
+            var shutdownTask = App.Current.Services.ShutdownAsync();
+            if (!shutdownTask.Wait(TimeSpan.FromSeconds(1)))
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "GitTool shutdown cleanup exceeded one second; exiting without waiting longer.");
+            }
         }
         catch (Exception exception)
         {
@@ -252,20 +279,7 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            _appWindow.Closing -= OnAppWindowClosing;
-            Close();
+            App.Current.Exit();
         }
-    }
-
-    private void OnWindowClosed(object sender, WindowEventArgs args)
-    {
-        if (_shutdownStarted)
-        {
-            return;
-        }
-
-        _shutdownStarted = true;
-        App.Current.Services.OperationCoordinator.StatusChanged -= OnOperationStatusChanged;
-        App.Current.Services.ShutdownAsync().GetAwaiter().GetResult();
     }
 }

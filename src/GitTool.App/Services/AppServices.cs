@@ -67,6 +67,6 @@ public sealed class AppServices
     public async Task ShutdownAsync()
     {
         BadgeService.Clear();
-        await Logger.DisposeAsync();
+        await Logger.DisposeAsync().ConfigureAwait(false);
     }
 }
