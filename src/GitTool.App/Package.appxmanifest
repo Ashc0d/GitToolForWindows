@@ -2,10 +2,8 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
-  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap desktop com rescap">
+  IgnorableNamespaces="uap rescap">
 
   <!--
     scripts\build.ps1 creates a local copy of this template for unsigned MSIX
@@ -14,7 +12,7 @@
   <Identity
     Name="__PACKAGE_IDENTITY__"
     Publisher="__PACKAGE_PUBLISHER__"
-    Version="0.1.5.0" />
+    Version="__PACKAGE_VERSION__" />
 
   <Properties>
     <DisplayName>GitTool</DisplayName>
@@ -40,22 +38,6 @@
         Square44x44Logo="Assets\AppIcon.png">
         <uap:DefaultTile />
       </uap:VisualElements>
-      <Extensions>
-        <desktop:Extension Category="windows.toastNotificationActivation">
-          <desktop:ToastNotificationActivation
-            ToastActivatorCLSID="6F7CC6A0-27F8-4A9A-82D3-B28F4C2F845A" />
-        </desktop:Extension>
-        <com:Extension Category="windows.comServer">
-          <com:ComServer>
-            <com:ExeServer
-              Executable="GitTool.App.exe"
-              Arguments="----AppNotificationActivated:"
-              DisplayName="GitTool">
-              <com:Class Id="6F7CC6A0-27F8-4A9A-82D3-B28F4C2F845A" />
-            </com:ExeServer>
-          </com:ComServer>
-        </com:Extension>
-      </Extensions>
     </Application>
   </Applications>
 

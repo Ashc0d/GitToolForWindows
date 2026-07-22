@@ -1,5 +1,7 @@
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
+using Windows.Data.Xml.Dom;
+using Windows.UI.Notifications;
 
 namespace GitTool.App.Services;
 
@@ -19,12 +21,31 @@ internal interface IAppNotificationPlatform
 internal sealed class WindowsAppNotificationPlatform : IAppNotificationPlatform
 {
     private AppNotificationManager? _manager;
+    private ToastNotifier? _packagedToastNotifier;
     private Action<string>? _notificationInvoked;
 
-    public bool IsSupported() => AppNotificationManager.IsSupported();
+    public bool IsSupported() =>
+        PackageIdentity.IsPackaged && !PackageIdentity.HasNotificationComActivator
+            || AppNotificationManager.IsSupported();
 
     public NotificationSystemSetting GetSetting()
     {
+        if (_packagedToastNotifier is not null)
+        {
+            return _packagedToastNotifier.Setting switch
+            {
+                NotificationSetting.Enabled => NotificationSystemSetting.Enabled,
+                NotificationSetting.DisabledForApplication =>
+                    NotificationSystemSetting.DisabledForApplication,
+                NotificationSetting.DisabledForUser => NotificationSystemSetting.DisabledForUser,
+                NotificationSetting.DisabledByGroupPolicy =>
+                    NotificationSystemSetting.DisabledByGroupPolicy,
+                NotificationSetting.DisabledByManifest =>
+                    NotificationSystemSetting.DisabledByManifest,
+                _ => NotificationSystemSetting.Unsupported
+            };
+        }
+
         var setting = GetRegisteredManager().Setting;
         return setting switch
         {
@@ -45,6 +66,17 @@ internal sealed class WindowsAppNotificationPlatform : IAppNotificationPlatform
         ArgumentNullException.ThrowIfNull(notificationInvoked);
         if (_manager is not null)
         {
+            return;
+        }
+
+        if (_packagedToastNotifier is not null)
+        {
+            return;
+        }
+
+        if (PackageIdentity.IsPackaged && !PackageIdentity.HasNotificationComActivator)
+        {
+            _packagedToastNotifier = ToastNotificationManager.CreateToastNotifier();
             return;
         }
 
@@ -73,11 +105,26 @@ internal sealed class WindowsAppNotificationPlatform : IAppNotificationPlatform
             .AddText(Truncate(message, 180))
             .BuildNotification();
         notification.ExpiresOnReboot = true;
+
+        if (_packagedToastNotifier is not null)
+        {
+            var payload = new XmlDocument();
+            payload.LoadXml(notification.Payload);
+            _packagedToastNotifier.Show(new ToastNotification(payload));
+            return;
+        }
+
         GetRegisteredManager().Show(notification);
     }
 
     public void Unregister()
     {
+        if (_packagedToastNotifier is not null)
+        {
+            _packagedToastNotifier = null;
+            return;
+        }
+
         var manager = _manager;
         _manager = null;
 

@@ -76,6 +76,45 @@ function Get-SafeMsixComponent {
     return $component
 }
 
+function New-LocalPackageVersion {
+    param(
+        [Parameter(Mandatory)][string]$AppVersion,
+        [Parameter(Mandatory)][string]$PackageIdentity,
+        [Parameter(Mandatory)][string]$StatePath
+    )
+
+    $parsedAppVersion = [Version]$AppVersion
+    $buildComponent = if ($parsedAppVersion.Build -ge 0) { $parsedAppVersion.Build } else { 0 }
+    $versionPrefix = "$($parsedAppVersion.Major).$($parsedAppVersion.Minor).$buildComponent"
+    $highestRevision = 0
+
+    $installedPackages = @(Get-AppxPackage -Name $PackageIdentity -ErrorAction SilentlyContinue)
+    foreach ($installedPackage in $installedPackages) {
+        $installedVersion = [Version]$installedPackage.Version
+        $installedPrefix = "$($installedVersion.Major).$($installedVersion.Minor).$($installedVersion.Build)"
+        if ($installedPrefix -eq $versionPrefix) {
+            $highestRevision = [Math]::Max($highestRevision, $installedVersion.Revision)
+        }
+    }
+
+    if (Test-Path -LiteralPath $StatePath -PathType Leaf) {
+        $stateVersion = [Version](Get-Content -LiteralPath $StatePath -Raw).Trim()
+        $statePrefix = "$($stateVersion.Major).$($stateVersion.Minor).$($stateVersion.Build)"
+        if ($statePrefix -eq $versionPrefix) {
+            $highestRevision = [Math]::Max($highestRevision, $stateVersion.Revision)
+        }
+    }
+
+    $nextRevision = $highestRevision + 1
+    if ($nextRevision -gt [UInt16]::MaxValue) {
+        fail "The local MSIX revision counter is exhausted for app version '$AppVersion'."
+    }
+
+    $packageVersion = "$versionPrefix.$nextRevision"
+    Set-Content -LiteralPath $StatePath -Value $packageVersion -Encoding ascii
+    return $packageVersion
+}
+
 function New-MsixBuildInputs {
     param(
         [Parameter(Mandatory)][string]$Flavor,
@@ -98,28 +137,36 @@ function New-MsixBuildInputs {
     $intermediateDirectory = Join-Path $RepositoryRoot "src\GitTool.App\obj\MsixUnsigned\$Configuration\$Platform\$Flavor"
     $generatedManifestPath = Join-Path $intermediateDirectory "Package.appxmanifest"
     $buildMetadataPath = Join-Path $intermediateDirectory "BuildInfo.json"
+    $versionStatePath = Join-Path $intermediateDirectory "PackageVersion.txt"
 
     if (-not (Test-Path -LiteralPath $templatePath -PathType Leaf)) {
         fail "MSIX manifest template '$templatePath' was not found."
     }
 
     New-Item -ItemType Directory -Path $intermediateDirectory -Force | Out-Null
+    $project = [xml](Get-Content -LiteralPath (Join-Path $RepositoryRoot "src\GitTool.App\GitTool.App.csproj"))
+    $appVersion = [string]$project.Project.PropertyGroup.Version
+    $packageVersion = New-LocalPackageVersion `
+        -AppVersion $appVersion `
+        -PackageIdentity $packageIdentity `
+        -StatePath $versionStatePath
     $template = Get-Content -LiteralPath $templatePath -Raw
     $manifest = $template.Replace("__PACKAGE_IDENTITY__", [Security.SecurityElement]::Escape($packageIdentity))
     $manifest = $manifest.Replace("__PACKAGE_PUBLISHER__", [Security.SecurityElement]::Escape($packagePublisher))
     $manifest = $manifest.Replace("__PUBLISHER_DISPLAY_NAME__", [Security.SecurityElement]::Escape($publisherDisplayName))
+    $manifest = $manifest.Replace("__PACKAGE_VERSION__", $packageVersion)
     if ($manifest -match "__[A-Z_]+__") {
         fail "MSIX manifest template '$templatePath' contains an unresolved token."
     }
 
     Set-Content -LiteralPath $generatedManifestPath -Value $manifest -Encoding utf8
 
-    $project = [xml](Get-Content -LiteralPath (Join-Path $RepositoryRoot "src\GitTool.App\GitTool.App.csproj"))
     $commit = (git rev-parse --short HEAD).Trim()
     Assert-LastCommandSucceeded "Source revision detection"
     $buildMetadata = [ordered]@{
         product = "GitTool"
-        appVersion = [string]$project.Project.PropertyGroup.Version
+        appVersion = $appVersion
+        packageVersion = $packageVersion
         buildTimestampUtc = [DateTimeOffset]::UtcNow.ToString("O")
         builtBy = $localUserName
         buildMachine = [Environment]::MachineName

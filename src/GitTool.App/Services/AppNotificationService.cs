@@ -75,7 +75,7 @@ public sealed class AppNotificationService
             }
 
             SetCapability(ReadSystemCapability());
-            _logger.Info("Windows app notification manager registered.");
+            _logger.Info("Windows notification platform initialized.");
         }
         catch (Exception exception)
         {
@@ -173,7 +173,7 @@ public sealed class AppNotificationService
         try
         {
             _platform.Unregister();
-            _logger.Info("Windows app notification manager unregistered.");
+            _logger.Info("Windows notification platform stopped.");
         }
         catch (Exception exception)
         {

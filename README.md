@@ -74,7 +74,14 @@ The package also carries the Windows-required unsigned-publisher namespace
 marker; it contains no repository owner or hardcoded personal identity.
 It also contains `BuildInfo.json` with the app version, UTC build time, local
 builder and machine, branch, commit, configuration, platform, and package
-identity. The standalone and CI builds do not include this file.
+identity. The local builder increments the fourth MSIX version component so a
+new package upgrades an installed development build without removing its app
+data. The standalone and CI builds do not include this file.
+Because Windows forbids executable activation extensions in unsigned MSIX
+packages, unsigned builds use the packaged no-COM toast path. Test and
+background completion notifications still display, but notification clicks and
+inputs cannot activate GitTool inside its existing process. A future signed
+package can restore the COM activator for full notification activation.
 
 On Windows 11, you can install an unsigned package directly with
 `Add-AppxPackage`, or use the optional generic helper from an elevated

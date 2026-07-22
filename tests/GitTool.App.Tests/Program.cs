@@ -3,6 +3,7 @@ using GitTool.Core.Infrastructure;
 using GitTool.Core.Models;
 
 VerifyPackagedDataMigration();
+VerifyNotificationManifestDetection();
 await VerifyElevatedSessionAsync();
 await VerifyUnsupportedSessionAsync();
 await VerifyRegistrationFailureAsync();
@@ -44,6 +45,54 @@ static void VerifyPackagedDataMigration()
             2,
             Directory.EnumerateFiles(packageRoot, "settings*.json").Count(),
             "colliding settings files preserved during migration");
+    }
+    finally
+    {
+        if (Directory.Exists(testRoot))
+        {
+            Directory.Delete(testRoot, true);
+        }
+    }
+}
+
+static void VerifyNotificationManifestDetection()
+{
+    var testRoot = Path.Combine(Path.GetTempPath(), $"GitTool-Manifest-{Guid.NewGuid():N}");
+    var manifestPath = Path.Combine(testRoot, "AppxManifest.xml");
+
+    try
+    {
+        Directory.CreateDirectory(testRoot);
+        File.WriteAllText(
+            manifestPath,
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+                     xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+                     xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10">
+              <Applications>
+                <Application>
+                  <Extensions>
+                    <desktop:Extension Category="windows.toastNotificationActivation" />
+                    <com:Extension Category="windows.comServer" />
+                  </Extensions>
+                </Application>
+              </Applications>
+            </Package>
+            """);
+        AssertTrue(
+            PackageIdentity.ManifestDeclaresNotificationComActivator(manifestPath),
+            "notification COM activator was not detected");
+
+        File.WriteAllText(
+            manifestPath,
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Applications><Application /></Applications>
+            </Package>
+            """);
+        AssertTrue(
+            !PackageIdentity.ManifestDeclaresNotificationComActivator(manifestPath),
+            "manifest without notification extensions was treated as COM activated");
     }
     finally
     {

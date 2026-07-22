@@ -53,4 +53,12 @@ and Singleton packages provide notification dependencies. Notification
 registration remains capability-gated, and unsupported or policy-blocked states
 never interrupt Git operations. Unsigned MSIX package identity and publisher
 are derived from the local Windows username, and its `BuildInfo.json` records
-local build metadata. CI builds only the standalone output.
+local build metadata. Local unsigned builds keep an ignored revision counter
+and compare it with any installed matching identity so repeated builds produce
+an in-place MSIX upgrade. Windows does not permit executable notification
+activations in unsigned MSIX packages, so those manifests omit the COM
+activator. At runtime, `WindowsAppNotificationPlatform` detects that omission
+and sends through the packaged `ToastNotificationManager` path instead. Banners
+and background completion notifications remain available, but in-process click
+and input activation require a future signed package with the COM extension. CI
+builds only the standalone output.
