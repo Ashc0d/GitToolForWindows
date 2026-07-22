@@ -8,13 +8,13 @@
   IgnorableNamespaces="uap desktop com rescap">
 
   <Identity
-    Name="Ashish.GitTool.Experimental"
-    Publisher="CN=Ashish Kumar Singh, OID.2.25.311729368913984317654407730594956997722=1"
+    Name="__PACKAGE_IDENTITY__"
+    Publisher="__PACKAGE_PUBLISHER__"
     Version="0.1.5.0" />
 
   <Properties>
     <DisplayName>GitTool Experimental</DisplayName>
-    <PublisherDisplayName>Ashish Kumar Singh (Experimental)</PublisherDisplayName>
+    <PublisherDisplayName>__PUBLISHER_DISPLAY_NAME__</PublisherDisplayName>
     <Logo>Assets\AppIcon.png</Logo>
   </Properties>
 

@@ -8,18 +8,17 @@
   IgnorableNamespaces="uap desktop com rescap">
 
   <!--
-    The production package identity and display name are used for manual MSIX
-    builds from master. Branch-specific development manifests are selected by
-    scripts\build.ps1 through the PackageFlavor property.
+    scripts\build.ps1 creates a local copy of this template for unsigned MSIX
+    builds and supplies the current Windows user as its package publisher.
   -->
   <Identity
-    Name="Ashish.GitTool"
-    Publisher="CN=Ashish Kumar Singh"
+    Name="__PACKAGE_IDENTITY__"
+    Publisher="__PACKAGE_PUBLISHER__"
     Version="0.1.5.0" />
 
   <Properties>
     <DisplayName>GitTool</DisplayName>
-    <PublisherDisplayName>Ashish Kumar Singh</PublisherDisplayName>
+    <PublisherDisplayName>__PUBLISHER_DISPLAY_NAME__</PublisherDisplayName>
     <Logo>Assets\AppIcon.png</Logo>
   </Properties>
 

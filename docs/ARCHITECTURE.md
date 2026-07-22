@@ -51,4 +51,6 @@ framework-dependent unsigned MSIX. MSIX identity is selected by branch:
 taskbar badge glyphs, while the installed Windows App Runtime Framework, Main,
 and Singleton packages provide notification dependencies. Notification
 registration remains capability-gated, and unsupported or policy-blocked states
-never interrupt Git operations. CI builds only the standalone output.
+never interrupt Git operations. Unsigned MSIX package identity and publisher
+are derived from the local Windows username, and its `BuildInfo.json` records
+local build metadata. CI builds only the standalone output.

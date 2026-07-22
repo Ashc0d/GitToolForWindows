@@ -51,7 +51,7 @@ must still be available on `PATH`.
 Build an unsigned MSIX manually:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Configuration Release -Platform x64 -Target Msix
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Configuration Release -Platform x64 -Target Msix-Unsigned
 ```
 
 The package is written under `src\GitTool.App\AppPackages`. Its identity and
@@ -68,10 +68,29 @@ self-contained standalone ZIPs. Visual Studio can deploy the app for
 development. A distributed MSIX must be signed with a certificate whose subject
 matches the package publisher, or signed by the Microsoft Store.
 
-On Windows 11, install an unsigned package from an elevated PowerShell session:
+An unsigned MSIX is local to its builder: its publisher and package identity
+are derived from the current Windows username instead of repository metadata.
+The package also carries the Windows-required unsigned-publisher namespace
+marker; it contains no repository owner or hardcoded personal identity.
+It also contains `BuildInfo.json` with the app version, UTC build time, local
+builder and machine, branch, commit, configuration, platform, and package
+identity. The standalone and CI builds do not include this file.
+
+On Windows 11, you can install an unsigned package directly with
+`Add-AppxPackage`, or use the optional generic helper from an elevated
+PowerShell session:
 
 ```powershell
-Add-AppxPackage -Path .\src\GitTool.App\AppPackages\<package>.msix -AllowUnsigned
+.\scripts\install-unsigned-msix.ps1
+```
+
+The helper selects the newest local MSIX by default. Pass `-PackagePath` to
+select a specific package. It reads the MSIX manifest, so it supports all three
+GitTool package flavors without a branch-specific script name. To remove a
+package and its package-managed LocalState, run:
+
+```powershell
+.\scripts\uninstall-unsigned-msix.ps1 -PackagePath .\src\GitTool.App\AppPackages\<package>.msix
 ```
 
 Launch the app from the Start menu without elevation. Its

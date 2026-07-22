@@ -6,7 +6,7 @@ param(
     [ValidateSet("x64", "ARM64")]
     [string]$Platform = "x64",
 
-    [ValidateSet("Standalone", "Msix")]
+    [ValidateSet("Standalone", "Msix-Unsigned")]
     [string]$Target = "Standalone",
 
     [switch]$SkipRestore,
@@ -45,9 +45,14 @@ function Assert-LastCommandSucceeded {
     }
 }
 
-function Get-MsixFlavor {
+function Get-CurrentBranch {
     $branch = (git branch --show-current).Trim()
     Assert-LastCommandSucceeded "Branch detection"
+    return $branch
+}
+
+function Get-MsixFlavor {
+    param([Parameter(Mandatory)][string]$Branch)
 
     switch -Regex ($branch) {
         "^master$" { return "Production" }
@@ -56,6 +61,83 @@ function Get-MsixFlavor {
         default {
             fail "Unsigned MSIX builds are supported only from master, development, or experimental/* branches. Current branch: '$branch'."
         }
+    }
+}
+
+function Get-SafeMsixComponent {
+    param([Parameter(Mandatory)][string]$Value)
+
+    $component = $Value -replace "[^A-Za-z0-9.-]", "-"
+    $component = $component.Trim(".", "-")
+    if ([string]::IsNullOrWhiteSpace($component)) {
+        fail "The current Windows username cannot be used in an MSIX identity."
+    }
+
+    return $component
+}
+
+function New-MsixBuildInputs {
+    param(
+        [Parameter(Mandatory)][string]$Flavor,
+        [Parameter(Mandatory)][string]$Branch,
+        [Parameter(Mandatory)][string]$Configuration,
+        [Parameter(Mandatory)][string]$Platform,
+        [Parameter(Mandatory)][string]$RepositoryRoot
+    )
+
+    $localUserName = [Environment]::UserName
+    $safeUserName = Get-SafeMsixComponent $localUserName
+    $flavorSuffix = if ($Flavor -eq "Production") { "" } else { ".$Flavor" }
+    $packageIdentity = "GitTool.$safeUserName$flavorSuffix"
+    # Windows requires this unsigned-namespace marker for Add-AppxPackage
+    # -AllowUnsigned. The personal part of the publisher remains local-only.
+    $packagePublisher = "CN=$safeUserName, OID.2.25.311729368913984317654407730594956997722=1"
+    $publisherDisplayName = $localUserName
+    $templateName = if ($Flavor -eq "Production") { "Package.appxmanifest" } else { "Package.$Flavor.appxmanifest" }
+    $templatePath = Join-Path $RepositoryRoot "src\GitTool.App\$templateName"
+    $intermediateDirectory = Join-Path $RepositoryRoot "src\GitTool.App\obj\MsixUnsigned\$Configuration\$Platform\$Flavor"
+    $generatedManifestPath = Join-Path $intermediateDirectory "Package.appxmanifest"
+    $buildMetadataPath = Join-Path $intermediateDirectory "BuildInfo.json"
+
+    if (-not (Test-Path -LiteralPath $templatePath -PathType Leaf)) {
+        fail "MSIX manifest template '$templatePath' was not found."
+    }
+
+    New-Item -ItemType Directory -Path $intermediateDirectory -Force | Out-Null
+    $template = Get-Content -LiteralPath $templatePath -Raw
+    $manifest = $template.Replace("__PACKAGE_IDENTITY__", [Security.SecurityElement]::Escape($packageIdentity))
+    $manifest = $manifest.Replace("__PACKAGE_PUBLISHER__", [Security.SecurityElement]::Escape($packagePublisher))
+    $manifest = $manifest.Replace("__PUBLISHER_DISPLAY_NAME__", [Security.SecurityElement]::Escape($publisherDisplayName))
+    if ($manifest -match "__[A-Z_]+__") {
+        fail "MSIX manifest template '$templatePath' contains an unresolved token."
+    }
+
+    Set-Content -LiteralPath $generatedManifestPath -Value $manifest -Encoding utf8
+
+    $project = [xml](Get-Content -LiteralPath (Join-Path $RepositoryRoot "src\GitTool.App\GitTool.App.csproj"))
+    $commit = (git rev-parse --short HEAD).Trim()
+    Assert-LastCommandSucceeded "Source revision detection"
+    $buildMetadata = [ordered]@{
+        product = "GitTool"
+        appVersion = [string]$project.Project.PropertyGroup.Version
+        buildTimestampUtc = [DateTimeOffset]::UtcNow.ToString("O")
+        builtBy = $localUserName
+        buildMachine = [Environment]::MachineName
+        branch = $Branch
+        commit = $commit
+        configuration = $Configuration
+        platform = $Platform
+        packageFlavor = $Flavor
+        packageIdentity = $packageIdentity
+        packagePublisher = $packagePublisher
+    }
+    $buildMetadata | ConvertTo-Json | Set-Content -LiteralPath $buildMetadataPath -Encoding utf8
+
+    return [PSCustomObject]@{
+        ManifestPath = $generatedManifestPath
+        BuildMetadataPath = $buildMetadataPath
+        PackageIdentity = $packageIdentity
+        LocalUserName = $localUserName
     }
 }
 
@@ -87,14 +169,23 @@ try {
         ok "Core and notification tests passed."
     }
 
-    if ($Target -eq "Msix") {
-        $msixFlavor = Get-MsixFlavor
-        info "Building the unsigned $msixFlavor MSIX for $Platform."
+    if ($Target -eq "Msix-Unsigned") {
+        $branch = Get-CurrentBranch
+        $msixFlavor = Get-MsixFlavor $branch
+        $msixInputs = New-MsixBuildInputs `
+            -Flavor $msixFlavor `
+            -Branch $branch `
+            -Configuration $Configuration `
+            -Platform $Platform `
+            -RepositoryRoot $repositoryRoot
+        info "Building the unsigned $msixFlavor MSIX for local user '$($msixInputs.LocalUserName)'."
         dotnet build .\src\GitTool.App\GitTool.App.csproj `
             --configuration $Configuration `
             --no-restore `
             -p:Platform=$Platform `
             -p:PackageFlavor=$msixFlavor `
+            -p:PackageManifest="$($msixInputs.ManifestPath)" `
+            -p:MsixBuildMetadataFile="$($msixInputs.BuildMetadataPath)" `
             -p:GenerateAppxPackageOnBuild=true `
             -p:AppxPackageSigningEnabled=false `
             -p:AppxBundle=Never `
@@ -114,6 +205,7 @@ try {
         }
 
         ok "Unsigned $msixFlavor package created at '$($package.FullName)'."
+        info "BuildInfo.json inside the MSIX records the local build details."
         info "Install it manually from an elevated PowerShell session with Add-AppxPackage -AllowUnsigned."
     }
     else {

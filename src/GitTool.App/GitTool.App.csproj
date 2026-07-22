@@ -13,8 +13,8 @@
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <PackageFlavor Condition="'$(PackageFlavor)' == ''">Production</PackageFlavor>
-    <PackageManifest Condition="'$(PackageFlavor)' == 'Production'">Package.appxmanifest</PackageManifest>
-    <PackageManifest Condition="'$(PackageFlavor)' != 'Production'">Package.$(PackageFlavor).appxmanifest</PackageManifest>
+    <PackageManifest Condition="'$(PackageManifest)' == '' and '$(PackageFlavor)' == 'Production'">Package.appxmanifest</PackageManifest>
+    <PackageManifest Condition="'$(PackageManifest)' == '' and '$(PackageFlavor)' != 'Production'">Package.$(PackageFlavor).appxmanifest</PackageManifest>
     <!--
       The experimental MSIX is framework-dependent so Windows App SDK broker
       components (including app notifications) come from the installed runtime.
@@ -48,5 +48,11 @@
 
   <ItemGroup>
     <Content Include="Assets\AppIcon.png" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(MsixBuildMetadataFile)' != ''">
+    <Content Include="$(MsixBuildMetadataFile)">
+      <Link>BuildInfo.json</Link>
+    </Content>
   </ItemGroup>
 </Project>
