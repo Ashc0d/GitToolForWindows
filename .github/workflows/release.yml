@@ -1,4 +1,4 @@
-name: GitHub Portable Release Build
+name: GitHub Standalone Build and Release
 
 on:
   push:
@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   release:
-    name: Build portable Windows release
+    name: Build standalone Windows release
     runs-on: windows-latest
     env:
       CONFIGURATION: Release
@@ -39,6 +39,10 @@ jobs:
       - name: Run core tests
         shell: pwsh
         run: dotnet run --project .\tests\GitTool.Core.Tests\GitTool.Core.Tests.csproj --configuration $env:CONFIGURATION --no-restore
+
+      - name: Run notification tests
+        shell: pwsh
+        run: dotnet run --project .\tests\GitTool.App.Tests\GitTool.App.Tests.csproj --configuration $env:CONFIGURATION --no-restore -p:Platform=x64
 
       - name: Determine release version
         shell: pwsh

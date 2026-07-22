@@ -8,7 +8,7 @@ public sealed class AppServices
 {
     public AppServices()
     {
-        Paths = new AppPaths();
+        Paths = new AppPaths(AppDataStorage.ResolveDataRoot());
         Logger = new BufferedFileLogger(Paths);
         SettingsStore = new JsonSettingsStore(Paths);
 
@@ -27,7 +27,7 @@ public sealed class AppServices
 
         OperationCoordinator = new OperationCoordinator();
         BadgeService = new TaskbarBadgeService();
-        NotificationService = new AppNotificationService(() => Settings);
+        NotificationService = new AppNotificationService(() => Settings, Logger);
         UserOperations = new UserOperationService(
             OperationCoordinator,
             BadgeService,
@@ -58,14 +58,16 @@ public sealed class AppServices
 
     public FolderPickerService FolderPicker { get; }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(Action<string> notificationInvoked)
     {
         Settings = await SettingsStore.LoadAsync();
         Logger.Info($"Settings loaded from '{Paths.SettingsFile}'.");
+        await NotificationService.InitializeAsync(notificationInvoked);
     }
 
     public async Task ShutdownAsync()
     {
+        NotificationService.Shutdown();
         BadgeService.Clear();
         await Logger.DisposeAsync().ConfigureAwait(false);
     }

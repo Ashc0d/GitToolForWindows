@@ -61,6 +61,7 @@ public sealed class UserOperationService
                     _logger.Info(result.Summary);
                 }
 
+                await _notificationService.ShowOperationCompletionAsync(title, result);
                 return result;
             }
 
@@ -68,12 +69,13 @@ public sealed class UserOperationService
             {
                 _badgeService.Clear();
                 _logger.Info(result.Summary);
+                await _notificationService.ShowOperationCompletionAsync(title, result);
                 return result;
             }
 
             _badgeService.ShowError();
             await _logger.ErrorAsync($"{title}: {result.Summary}{Environment.NewLine}{result.Diagnostics}");
-            _notificationService.ShowAttention("GitTool needs attention", result.Summary);
+            await _notificationService.ShowOperationCompletionAsync(title, result);
             await ShowErrorDialogAsync(xamlRoot, title, result);
             _badgeService.Clear();
             return result;

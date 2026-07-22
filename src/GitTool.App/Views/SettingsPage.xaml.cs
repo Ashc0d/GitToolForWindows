@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using GitTool.App.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
@@ -20,6 +21,7 @@ public sealed partial class SettingsPage : Page
         DefaultCloneDirectoryTextBox.Text = services.Settings.DefaultCloneDirectory;
         NotificationsToggleSwitch.IsOn = services.Settings.NotificationsEnabled;
         LogsDirectoryTextBox.Text = services.Paths.LogsRoot;
+        RefreshNotificationCapability();
     }
 
     private async void OnChooseDefaultDirectoryClick(object sender, RoutedEventArgs e)
@@ -50,22 +52,33 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void OnTestNotificationClick(object sender, RoutedEventArgs e)
+    private async void OnTestNotificationClick(object sender, RoutedEventArgs e)
     {
         if (!NotificationsToggleSwitch.IsOn)
         {
             ShowInfo(
                 InfoBarSeverity.Informational,
                 "Notifications are silenced",
-                "Enable Windows notifications and save settings before testing.");
+                "Enable Windows notifications before testing.");
             return;
         }
 
-        App.Current.Services.Settings.NotificationsEnabled = true;
-        App.Current.Services.NotificationService.ShowAttention(
+        TestNotificationButton.IsEnabled = false;
+        var result = await App.Current.Services.NotificationService.ShowTestAsync(
             "GitTool notification test",
-            "Notifications are ready for errors and operations that need attention.");
-        ShowInfo(InfoBarSeverity.Success, "Test sent", "Check Windows Notification Center.");
+            "Notifications are ready for Git operations that finish while GitTool is in the background.");
+        TestNotificationButton.IsEnabled = true;
+
+        var severity = result.Status switch
+        {
+            NotificationDeliveryStatus.Sent => InfoBarSeverity.Success,
+            NotificationDeliveryStatus.SendFailed
+                or NotificationDeliveryStatus.RegistrationFailed => InfoBarSeverity.Error,
+            _ => InfoBarSeverity.Warning
+        };
+        var title = result.WasSent ? "Test notification sent" : "Test notification not sent";
+        ShowInfo(severity, title, result.Message);
+        RefreshNotificationCapability();
     }
 
     private void OnOpenLogsClick(object sender, RoutedEventArgs e)
@@ -93,5 +106,21 @@ public sealed partial class SettingsPage : Page
         SettingsInfoBar.Title = title;
         SettingsInfoBar.Message = message;
         SettingsInfoBar.IsOpen = true;
+    }
+
+    private void RefreshNotificationCapability()
+    {
+        var capability = App.Current.Services.NotificationService.GetCapability();
+        NotificationCapabilityInfoBar.Severity = capability.Status switch
+        {
+            NotificationCapabilityStatus.Available => InfoBarSeverity.Success,
+            NotificationCapabilityStatus.RegistrationFailed => InfoBarSeverity.Error,
+            _ => InfoBarSeverity.Warning
+        };
+        NotificationCapabilityInfoBar.Title = capability.CanSend
+            ? "Windows notifications available"
+            : "Windows notifications unavailable";
+        NotificationCapabilityInfoBar.Message = capability.Message;
+        NotificationCapabilityInfoBar.IsOpen = true;
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System.Runtime.InteropServices;
 using Windows.Graphics;
 
 namespace GitTool.App;
@@ -12,6 +13,7 @@ public sealed partial class MainWindow : Window
 {
     private const int InitialWidth = 1388;
     private const int InitialHeight = 1144;
+    private const int ShowWindowRestore = 9;
     private readonly AppWindow _appWindow;
     private bool _shutdownStarted;
     private bool _cancellationDialogOpen;
@@ -32,10 +34,19 @@ public sealed partial class MainWindow : Window
         CenterWindow(windowId);
 
         _appWindow.Closing += OnAppWindowClosing;
+        Activated += OnWindowActivated;
         Closed += OnWindowClosed;
         App.Current.Services.OperationCoordinator.StatusChanged += OnOperationStatusChanged;
 
         MainNavigation.Loaded += (_, _) => SelectInitialPage();
+    }
+
+    internal void ActivateFromNotification()
+    {
+        var windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        ShowWindow(windowHandle, ShowWindowRestore);
+        Activate();
+        SetForegroundWindow(windowHandle);
     }
 
     private void ConfigureTitleBar()
@@ -101,6 +112,10 @@ public sealed partial class MainWindow : Window
     {
         DispatcherQueue.TryEnqueue(() => ApplyOperationStatus(snapshot));
     }
+
+    private void OnWindowActivated(object sender, WindowActivatedEventArgs args) =>
+        App.Current.Services.NotificationService.SetForegroundState(
+            args.WindowActivationState != WindowActivationState.Deactivated);
 
     private void ApplyOperationStatus(OperationSnapshot snapshot)
     {
@@ -224,6 +239,7 @@ public sealed partial class MainWindow : Window
         }
 
         _closeRequested = true;
+        App.Current.Services.NotificationService.SuppressForShutdown();
         try
         {
             _appWindow.Hide();
@@ -262,6 +278,7 @@ public sealed partial class MainWindow : Window
 
         _shutdownStarted = true;
         _closeRequested = false;
+        Activated -= OnWindowActivated;
         App.Current.Services.OperationCoordinator.StatusChanged -= OnOperationStatusChanged;
 
         try
@@ -282,4 +299,12 @@ public sealed partial class MainWindow : Window
             App.Current.Exit();
         }
     }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(nint windowHandle, int command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(nint windowHandle);
 }

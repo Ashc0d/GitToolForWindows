@@ -12,7 +12,14 @@
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <PackageFlavor Condition="'$(PackageFlavor)' == ''">Production</PackageFlavor>
+    <PackageManifest Condition="'$(PackageFlavor)' == 'Production'">Package.appxmanifest</PackageManifest>
+    <PackageManifest Condition="'$(PackageFlavor)' != 'Production'">Package.$(PackageFlavor).appxmanifest</PackageManifest>
+    <!--
+      The experimental MSIX is framework-dependent so Windows App SDK broker
+      components (including app notifications) come from the installed runtime.
+    -->
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
     <UseCrtSDKReferenceStaticWarning>false</UseCrtSDKReferenceStaticWarning>
     <!--
       Windows App SDK 2.2's XAML target probes the optional MSVC folder whenever
@@ -33,6 +40,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AppxManifest Include="$(PackageManifest)" />
     <ProjectReference Include="..\GitTool.Core\GitTool.Core.csproj" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" PrivateAssets="all" />

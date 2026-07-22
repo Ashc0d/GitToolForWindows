@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GitTool.Core", "src\GitTool
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GitTool.Core.Tests", "tests\GitTool.Core.Tests\GitTool.Core.Tests.csproj", "{3B836CB9-21E1-4D84-836F-A5F23433A7AB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GitTool.App.Tests", "tests\GitTool.App.Tests\GitTool.App.Tests.csproj", "{A88D5A10-2164-4A95-88D2-7E1B43B94124}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -45,5 +47,13 @@ Global
 		{3B836CB9-21E1-4D84-836F-A5F23433A7AB}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3B836CB9-21E1-4D84-836F-A5F23433A7AB}.Release|x64.ActiveCfg = Release|Any CPU
 		{3B836CB9-21E1-4D84-836F-A5F23433A7AB}.Release|x64.Build.0 = Release|Any CPU
+		{A88D5A10-2164-4A95-88D2-7E1B43B94124}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{A88D5A10-2164-4A95-88D2-7E1B43B94124}.Debug|Any CPU.Build.0 = Debug|x64
+		{A88D5A10-2164-4A95-88D2-7E1B43B94124}.Debug|x64.ActiveCfg = Debug|x64
+		{A88D5A10-2164-4A95-88D2-7E1B43B94124}.Debug|x64.Build.0 = Debug|x64
+		{A88D5A10-2164-4A95-88D2-7E1B43B94124}.Release|Any CPU.ActiveCfg = Release|x64
+		{A88D5A10-2164-4A95-88D2-7E1B43B94124}.Release|Any CPU.Build.0 = Release|x64
+		{A88D5A10-2164-4A95-88D2-7E1B43B94124}.Release|x64.ActiveCfg = Release|x64
+		{A88D5A10-2164-4A95-88D2-7E1B43B94124}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 EndGlobal

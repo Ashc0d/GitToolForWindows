@@ -1,17 +1,12 @@
 using Microsoft.Windows.BadgeNotifications;
-using System.Runtime.InteropServices;
 
 namespace GitTool.App.Services;
 
 public sealed class TaskbarBadgeService
 {
-    private const int ErrorSuccess = 0;
-    private const int ErrorInsufficientBuffer = 122;
-    private static readonly bool HasPackageIdentity = DetectPackageIdentity();
-
     public void ShowActivity()
     {
-        if (HasPackageIdentity)
+        if (PackageIdentity.IsPackaged)
         {
             TrySet(BadgeNotificationGlyph.Activity);
         }
@@ -19,7 +14,7 @@ public sealed class TaskbarBadgeService
 
     public void ShowError()
     {
-        if (HasPackageIdentity)
+        if (PackageIdentity.IsPackaged)
         {
             TrySet(BadgeNotificationGlyph.Error);
         }
@@ -27,7 +22,7 @@ public sealed class TaskbarBadgeService
 
     public void Clear()
     {
-        if (!HasPackageIdentity)
+        if (!PackageIdentity.IsPackaged)
         {
             return;
         }
@@ -53,16 +48,4 @@ public sealed class TaskbarBadgeService
             // The in-app status remains available when taskbar badges are unsupported.
         }
     }
-
-    private static bool DetectPackageIdentity()
-    {
-        uint packageFullNameLength = 0;
-        var result = GetCurrentPackageFullName(ref packageFullNameLength, 0);
-        return result is ErrorSuccess or ErrorInsufficientBuffer;
-    }
-
-    [DllImport("kernel32.dll", ExactSpelling = true)]
-    private static extern int GetCurrentPackageFullName(
-        ref uint packageFullNameLength,
-        nint packageFullName);
 }

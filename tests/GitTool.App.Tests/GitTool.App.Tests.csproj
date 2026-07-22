@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <RootNamespace>GitTool.App.Tests</RootNamespace>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+    <AppxGeneratePrisForPortableLibrariesEnabled>false</AppxGeneratePrisForPortableLibrariesEnabled>
+    <AppxGetPackagePropertiesEnabled>false</AppxGetPackagePropertiesEnabled>
+    <UseSdkBuildToolsPackage>true</UseSdkBuildToolsPackage>
+    <!-- The test host is unpackaged and exercises fake Windows integrations. -->
+    <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
+    <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference
+      Include="..\..\src\GitTool.App\GitTool.App.csproj"
+      AdditionalProperties="WindowsAppSdkDeploymentManagerInitialize=false;WindowsAppSdkBootstrapInitialize=false;IntermediateOutputPath=obj\TestReference\;OutputPath=bin\TestReference\"
+      GlobalPropertiesToRemove="UseSdkBuildToolsPackage;AppxGeneratePriEnabled;AppxGeneratePrisForPortableLibrariesEnabled;AppxGetPackagePropertiesEnabled" />
+  </ItemGroup>
+</Project>

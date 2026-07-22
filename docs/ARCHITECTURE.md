@@ -2,11 +2,11 @@
 
 ## Operation lifecycle
 
-`UserOperationService` is the UI boundary for long-running work. It asks `OperationCoordinator` for the single global operation slot, applies an activity badge, and leaves the whole window blocked until the returned task completes. A failed result is logged immediately, changes the taskbar badge to Error, sends an optional Windows notification, and opens a diagnostic `ContentDialog`.
+`UserOperationService` is the UI boundary for long-running work. It asks `OperationCoordinator` for the single global operation slot, applies an activity badge, and leaves the whole window blocked until the returned task completes. Every final result is offered to `AppNotificationService`; it sends a completion notification only when notifications are enabled and the window is not in the foreground. Failed results are also logged immediately, change the taskbar badge to Error, and open a diagnostic `ContentDialog`.
 
 The window listens to `OperationCoordinator.StatusChanged`. This keeps status presentation separate from Git execution and guarantees that clone, pull, and any submodule follow-up remain one indivisible UI operation.
 
-`OperationCoordinator.CancelCurrentOperation()` signals the linked cancellation source for the active slot and publishes `Cancelling` immediately. The overlay Cancel button and window close button share one confirmation flow. A confirmed close waits for process shutdown and cleanup before closing. Deliberate cancellation is neutral: it clears activity state and uses an informational result instead of an error dialog or attention notification. Cleanup trouble is surfaced as a warning with the remaining path.
+`OperationCoordinator.CancelCurrentOperation()` signals the linked cancellation source for the active slot and publishes `Cancelling` immediately. The overlay Cancel button and window close button share one confirmation flow. A confirmed close hides the window, suppresses completion notifications, and waits for process shutdown and cleanup before closing. Deliberate cancellation is neutral and does not open an error dialog; a background cancellation can notify when the app remains open. Cleanup trouble is surfaced as an attention warning with the remaining path.
 
 ## Git execution
 
@@ -34,10 +34,21 @@ Options shared by operations belong in `RepositoryOperationOptions`. This is why
 
 ## Settings and logs
 
-`JsonSettingsStore` writes `%LOCALAPPDATA%\GitTool\settings.json` using a temporary-file replacement. `BufferedFileLogger` queues informational entries and flushes on a five-minute timer. Errors force an immediate flush, and window shutdown performs a final synchronous wait for the logger to finish.
+`JsonSettingsStore` writes `settings.json` using a temporary-file replacement. `BufferedFileLogger` queues informational entries and flushes on a five-minute timer. Errors force an immediate flush, and window shutdown performs a final synchronous wait for the logger to finish.
 
-The package installation directory is read-only, so writable app data and logs intentionally live together under `%LOCALAPPDATA%\GitTool`.
+Unpackaged runs keep writable app data under `%LOCALAPPDATA%\GitTool`.
+Packaged runs resolve `ApplicationData.Current.LocalFolder` and keep the same
+`GitTool\settings.json` and `GitTool\Logs` shape inside package-managed
+LocalState. The first packaged launch moves legacy unpackaged app data into
+LocalState when possible. Windows removes LocalState with the package.
 
 ## Packaging notes
 
-The app is a single-project MSIX WinUI 3 application. Package identity enables native taskbar badge glyphs and Windows integration. Badge and notification calls are guarded so unsupported shells do not interrupt Git operations; the in-app status and error dialog remain the authoritative fallback.
+The build script supports a self-contained standalone output and a manual,
+framework-dependent unsigned MSIX. MSIX identity is selected by branch:
+`master` uses GitTool, `development` uses GitTool Development, and
+`experimental/*` uses GitTool Experimental. Package identity enables native
+taskbar badge glyphs, while the installed Windows App Runtime Framework, Main,
+and Singleton packages provide notification dependencies. Notification
+registration remains capability-gated, and unsupported or policy-blocked states
+never interrupt Git operations. CI builds only the standalone output.

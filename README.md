@@ -12,9 +12,10 @@ This is a vibe-coded app built to learn about agentic development and support my
 - Fetch all remotes, pull with `--ff-only`, update submodules when requested, and push committed changes.
 - Block the application surface for the full lifetime of every Git operation, including submodule work.
 - Cancel active Git work from the blocking overlay or window close confirmation; process trees are stopped and app-created partial clone folders are removed safely.
-- Show live operation text, native taskbar activity/error badges, in-app error dialogs, and optional Windows notifications.
+- Show live operation text, native taskbar activity/error badges, in-app error dialogs, and optional Windows notifications when operations finish while GitTool is in the background.
 - Render with Per-Monitor V2 DPI awareness so WinUI redraws crisply when the window moves between displays with different scaling.
-- Store centralized defaults and buffered logs under `%LOCALAPPDATA%\GitTool`.
+- Store unpackaged settings and logs under `%LOCALAPPDATA%\GitTool`; packaged
+  runs use MSIX-managed LocalState so Windows removes them on uninstall.
 
 Logs are queued in memory and written only every five minutes, when an error occurs, and when the app closes. Fourteen daily log files are retained.
 
@@ -28,7 +29,7 @@ Logs are queued in memory and written only every five minutes, when an error occ
 
 The project uses Windows App SDK `2.2.0` (stable) and Windows SDK build tools `10.0.28000.1721`. NuGet restores both packages for the Visual Studio project.
 
-The Windows App SDK is deployed self-contained, so development and packaged builds do not require a separately installed Windows App Runtime 2.2 framework.
+Manual unsigned MSIX builds are framework-dependent and use the installed Windows App Runtime 2.2 framework, Main, and Singleton packages. This gives packaged runs access to the broker components required by `AppNotificationManager`. Elevated administrator processes cannot send Windows app notifications, so install from elevated PowerShell but launch GitTool normally.
 
 ## Build
 
@@ -36,19 +37,47 @@ Open `GitTool.sln`, choose `x64`, set `GitTool.App` as the startup project, and 
 
 The shared `GitTool` solution launch profile starts only `GitTool.App`; `GitTool.Core` is a class library and cannot be launched directly.
 
-From PowerShell:
+Build the default self-contained standalone app from PowerShell:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Configuration Release -Platform x64 -Target Standalone
 ```
 
-Build an unsigned test MSIX:
+The executable and all required files are written to
+`artifacts\standalone\Release\x64`. Keep the complete folder together when
+sharing it; only the app's own installation is avoided, while Git for Windows
+must still be available on `PATH`.
+
+Build an unsigned MSIX manually:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Configuration Release -Platform x64 -Package
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Configuration Release -Platform x64 -Target Msix
 ```
 
-The package is written under `src\GitTool.App\AppPackages`. Visual Studio can deploy the app for development. A distributed MSIX must be signed with a certificate whose subject matches the package publisher, or signed by the Microsoft Store.
+The package is written under `src\GitTool.App\AppPackages`. Its identity and
+Start menu name are selected from the current branch:
+
+| Branch | App name |
+| --- | --- |
+| `master` | GitTool |
+| `development` | GitTool Development |
+| `experimental/*` | GitTool Experimental |
+
+MSIX builds are intentionally manual for now. GitHub Actions publishes only
+self-contained standalone ZIPs. Visual Studio can deploy the app for
+development. A distributed MSIX must be signed with a certificate whose subject
+matches the package publisher, or signed by the Microsoft Store.
+
+On Windows 11, install an unsigned package from an elevated PowerShell session:
+
+```powershell
+Add-AppxPackage -Path .\src\GitTool.App\AppPackages\<package>.msix -AllowUnsigned
+```
+
+Launch the app from the Start menu without elevation. Its
+settings and logs are stored under the package's LocalState. On the first
+packaged launch, existing `%LOCALAPPDATA%\GitTool` data is moved into that
+package-managed location.
 
 When dependencies have already been restored and the machine is temporarily offline, add `-SkipRestore` to either command.
 
@@ -57,6 +86,7 @@ When dependencies have already been restored and the machine is temporarily offl
 - `src/GitTool.App` — WinUI 3 shell, pages, dialogs, pickers, notifications, and taskbar badges.
 - `src/GitTool.Core` — process execution, Git URL selection, clone/inspection, operation registry, settings, and logging.
 - `tests/GitTool.Core.Tests` — dependency-free executable checks for URL normalization, process-tree cancellation, safe clone cleanup, coordinator reuse, and local fetch/pull/push behavior.
+- `tests/GitTool.App.Tests` — fake-platform checks for notification capability, registration, system policy, foreground suppression, delivery failure, and shutdown behavior.
 - `docs/ARCHITECTURE.md` — extension points and operation lifecycle.
 
 All process arguments are passed through `ProcessStartInfo.ArgumentList`; repository paths and URLs are never concatenated into a command shell string.
@@ -68,3 +98,5 @@ All process arguments are passed through `ProcessStartInfo.ArgumentList`; reposi
 - [System backdrops and Mica](https://learn.microsoft.com/windows/apps/develop/ui/system-backdrops)
 - [High-DPI desktop application development](https://learn.microsoft.com/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows)
 - [Windows notifications overview](https://learn.microsoft.com/windows/apps/develop/notifications/)
+- [Windows App SDK deployment architecture](https://learn.microsoft.com/windows/apps/windows-app-sdk/deployment-architecture#singleton-package)
+- [Self-contained Windows App SDK deployment](https://learn.microsoft.com/windows/apps/package-and-deploy/self-contained-deploy/deploy-self-contained-apps)
