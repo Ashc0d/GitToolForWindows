@@ -140,7 +140,8 @@ public sealed class GitClient
 
         return OperationResult.Success(
             $"Cloned {repository.RepositoryName} using {transportName}.",
-            result.StandardOutput + result.StandardError);
+            result.StandardOutput + result.StandardError,
+            targetPath);
     }
 
     public async Task<RepositoryInspectionResult> InspectRepositoryAsync(
@@ -222,10 +223,188 @@ public sealed class GitClient
             string.Empty);
     }
 
+    public async Task<GitHistoryResult> GetHistoryAsync(
+        string repositoryPath,
+        CancellationToken cancellationToken)
+    {
+        const string format =
+            "%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%s%x1e";
+        var result = await RunReadOnlyGitAsync(
+                repositoryPath,
+                [
+                    "-C", repositoryPath,
+                    "log",
+                    "--all",
+                    "--topo-order",
+                    "--no-color",
+                    "--no-show-signature",
+                    "--decorate=short",
+                    "--max-count=200",
+                    $"--pretty=format:{format}"
+                ],
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result.IsCancelled)
+        {
+            return new GitHistoryResult(false, [], "History loading was cancelled.", IsCancelled: true);
+        }
+
+        if (!result.Started)
+        {
+            return new GitHistoryResult(
+                false,
+                [],
+                "Git could not be started.",
+                result.StartError);
+        }
+
+        if (!result.IsSuccess)
+        {
+            var error = result.TimedOut
+                ? "Git history loading timed out."
+                : "Git could not read the repository history.";
+            return new GitHistoryResult(
+                false,
+                [],
+                error,
+                result.StandardError + result.StandardOutput);
+        }
+
+        try
+        {
+            var commits = GitHistoryParser.ParseHistory(result.StandardOutput);
+            var signatureLookup = await GetSignaturePresenceAsync(
+                    repositoryPath,
+                    commits.Select(commit => commit.Hash).ToArray(),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (signatureLookup.IsCancelled)
+            {
+                return new GitHistoryResult(
+                    false,
+                    [],
+                    "History loading was cancelled.",
+                    IsCancelled: true);
+            }
+
+            return new GitHistoryResult(
+                true,
+                ApplySignatureStatuses(commits, signatureLookup.Statuses),
+                Diagnostics: signatureLookup.Diagnostics);
+        }
+        catch (FormatException exception)
+        {
+            return new GitHistoryResult(
+                false,
+                [],
+                "Git returned history in an unexpected format.",
+                exception.Message);
+        }
+    }
+
+    public async Task<GitCommitDetailsResult> GetCommitDetailsAsync(
+        string repositoryPath,
+        string commitHash,
+        CancellationToken cancellationToken)
+    {
+        const string format =
+            "%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%s%x1f%B%x1e";
+        var result = await RunReadOnlyGitAsync(
+                repositoryPath,
+                [
+                    "-C", repositoryPath,
+                    "show",
+                    "--no-ext-diff",
+                    "--no-color",
+                    "--no-show-signature",
+                    "--find-renames",
+                    "--numstat",
+                    "--diff-merges=first-parent",
+                    "--date=iso-strict",
+                    "--decorate=short",
+                    $"--format={format}",
+                    commitHash,
+                    "--"
+                ],
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result.IsCancelled)
+        {
+            return new GitCommitDetailsResult(
+                false,
+                null,
+                "Commit detail loading was cancelled.",
+                IsCancelled: true);
+        }
+
+        if (!result.Started)
+        {
+            return new GitCommitDetailsResult(
+                false,
+                null,
+                "Git could not be started.",
+                result.StartError);
+        }
+
+        if (!result.IsSuccess)
+        {
+            var error = result.TimedOut
+                ? "Commit detail loading timed out."
+                : "Git could not read the selected commit.";
+            return new GitCommitDetailsResult(
+                false,
+                null,
+                error,
+                result.StandardError + result.StandardOutput);
+        }
+
+        try
+        {
+            var details = GitHistoryParser.ParseDetails(result.StandardOutput);
+            var signatureLookup = await GetSignaturePresenceAsync(
+                    repositoryPath,
+                    [details.Commit.Hash],
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (signatureLookup.IsCancelled)
+            {
+                return new GitCommitDetailsResult(
+                    false,
+                    null,
+                    "Commit detail loading was cancelled.",
+                    IsCancelled: true);
+            }
+
+            var commit = details.Commit with
+            {
+                SignatureStatus = signatureLookup.Statuses.GetValueOrDefault(
+                    details.Commit.Hash,
+                    CommitSignatureStatus.Unknown)
+            };
+            return new GitCommitDetailsResult(
+                true,
+                details with { Commit = commit },
+                Diagnostics: signatureLookup.Diagnostics);
+        }
+        catch (FormatException exception)
+        {
+            return new GitCommitDetailsResult(
+                false,
+                null,
+                "Git returned commit details in an unexpected format.",
+                exception.Message);
+        }
+    }
+
     private async Task<ProcessRunResult> RunReadOnlyGitAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? timeout = null,
+        string? standardInput = null,
+        int? maximumCapturedCharacters = null)
     {
         return await _processRunner.RunAsync(
                 _gitExecutable,
@@ -233,9 +412,87 @@ public sealed class GitClient
                 workingDirectory,
                 null,
                 cancellationToken,
-                TimeSpan.FromSeconds(15))
+                timeout ?? TimeSpan.FromSeconds(15),
+                standardInput,
+                maximumCapturedCharacters ?? 96_000)
             .ConfigureAwait(false);
     }
+
+    private async Task<SignaturePresenceLookup> GetSignaturePresenceAsync(
+        string repositoryPath,
+        IReadOnlyList<string> commitHashes,
+        CancellationToken cancellationToken)
+    {
+        if (commitHashes.Count == 0)
+        {
+            return new SignaturePresenceLookup(false, new Dictionary<
+                string,
+                CommitSignatureStatus>());
+        }
+
+        var result = await RunReadOnlyGitAsync(
+                repositoryPath,
+                ["-C", repositoryPath, "cat-file", "--batch"],
+                cancellationToken,
+                TimeSpan.FromSeconds(1),
+                string.Join('\n', commitHashes) + '\n',
+                maximumCapturedCharacters: 4_000_000)
+            .ConfigureAwait(false);
+        if (result.IsCancelled)
+        {
+            return new SignaturePresenceLookup(
+                true,
+                new Dictionary<string, CommitSignatureStatus>());
+        }
+
+        if (!result.IsSuccess)
+        {
+            var diagnostics = result.TimedOut
+                ? "Commit signature-presence inspection timed out."
+                : "Git could not inspect commit signature presence.";
+            _logger.Warning(
+                $"{diagnostics} {result.StandardError}{result.StartError}");
+            return new SignaturePresenceLookup(
+                false,
+                new Dictionary<string, CommitSignatureStatus>(),
+                diagnostics);
+        }
+
+        try
+        {
+            return new SignaturePresenceLookup(
+                false,
+                GitHistoryParser.ParseSignaturePresenceBatch(
+                    result.StandardOutput,
+                    commitHashes));
+        }
+        catch (FormatException exception)
+        {
+            _logger.Warning(
+                $"Git returned unexpected signature-presence data: {exception.Message}");
+            return new SignaturePresenceLookup(
+                false,
+                new Dictionary<string, CommitSignatureStatus>(),
+                exception.Message);
+        }
+    }
+
+    private static IReadOnlyList<GitCommitInfo> ApplySignatureStatuses(
+        IReadOnlyList<GitCommitInfo> commits,
+        IReadOnlyDictionary<string, CommitSignatureStatus> statuses) =>
+        commits
+            .Select(commit => commit with
+            {
+                SignatureStatus = statuses.GetValueOrDefault(
+                    commit.Hash,
+                    CommitSignatureStatus.Unknown)
+            })
+            .ToArray();
+
+    private sealed record SignaturePresenceLookup(
+        bool IsCancelled,
+        IReadOnlyDictionary<string, CommitSignatureStatus> Statuses,
+        string Diagnostics = "");
 
     private static string? GetSafeTargetPath(string destinationRoot, string repositoryName)
     {

@@ -8,6 +8,8 @@ public sealed record OperationResult(
     int ExitCode = 0,
     OperationCancellationMetadata? Cancellation = null)
 {
+    public string? AffectedPath { get; init; }
+
     public bool IsCancelled => Cancellation is not null;
 
     public bool HasCancellationWarning => Cancellation?.CleanupFailed == true;
@@ -25,8 +27,14 @@ public sealed record OperationResult(
         }
     }
 
-    public static OperationResult Success(string summary, string output = "") =>
-        new(true, summary, output);
+    public static OperationResult Success(
+        string summary,
+        string output = "",
+        string? affectedPath = null) =>
+        new(true, summary, output)
+        {
+            AffectedPath = affectedPath
+        };
 
     public static OperationResult Failure(
         string summary,

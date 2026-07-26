@@ -27,12 +27,14 @@ public sealed class JsonSettingsStore
             }
 
             await using var stream = File.OpenRead(_paths.SettingsFile);
-            return await JsonSerializer.DeserializeAsync<AppSettings>(
-                       stream,
-                       SerializerOptions,
-                       cancellationToken)
-                   .ConfigureAwait(false)
+            var settings = await JsonSerializer.DeserializeAsync<AppSettings>(
+                    stream,
+                    SerializerOptions,
+                    cancellationToken)
+                .ConfigureAwait(false)
                 ?? AppSettings.CreateDefault();
+            settings.RecentRepositories ??= [];
+            return settings;
         }
         catch (JsonException)
         {

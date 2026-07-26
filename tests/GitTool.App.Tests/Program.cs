@@ -1,16 +1,19 @@
+using System.Diagnostics;
 using GitTool.App.Services;
 using GitTool.Core.Infrastructure;
 using GitTool.Core.Models;
 
 VerifyPackagedDataMigration();
 VerifyNotificationManifestDetection();
+await VerifyRecentRepositoriesAsync();
+VerifyRepositoryLauncher();
 await VerifyElevatedSessionAsync();
 await VerifyUnsupportedSessionAsync();
 await VerifyRegistrationFailureAsync();
 await VerifyDeliveryPolicyAsync();
 await VerifySystemSettingsAsync();
 await VerifySendFailureAsync();
-Console.WriteLine("[OK] Package-data migration and notification capability, registration, delivery, and background-policy checks passed.");
+Console.WriteLine("[OK] App-data, recent-repository, launcher, and notification checks passed.");
 return;
 
 static void VerifyPackagedDataMigration()
@@ -101,6 +104,188 @@ static void VerifyNotificationManifestDetection()
             Directory.Delete(testRoot, true);
         }
     }
+}
+
+static async Task VerifyRecentRepositoriesAsync()
+{
+    var testRoot = Path.Combine(Path.GetTempPath(), $"GitTool-Recents-{Guid.NewGuid():N}");
+
+    try
+    {
+        var paths = new AppPaths(testRoot);
+        var store = new JsonSettingsStore(paths);
+        var settings = AppSettings.CreateDefault();
+        var now = new DateTimeOffset(2026, 7, 27, 10, 0, 0, TimeSpan.Zero);
+        var service = new RecentRepositoryService(
+            settings,
+            store,
+            () => now = now.AddMinutes(1));
+        var repositories = Enumerable.Range(0, 12)
+            .Select(index => Path.Combine(testRoot, $"Repository-{index}"))
+            .ToArray();
+
+        foreach (var repository in repositories)
+        {
+            await service.RecordAsync(repository);
+        }
+
+        AssertEqual(
+            RecentRepositoryService.MaximumEntries,
+            service.Entries.Count,
+            "recent repository cap");
+        AssertEqual(
+            Path.GetFullPath(repositories[11]),
+            service.Entries[0].Path,
+            "newest recent repository");
+
+        await service.RecordAsync(repositories[5].ToUpperInvariant());
+        AssertEqual(
+            RecentRepositoryService.MaximumEntries,
+            service.Entries.Count,
+            "case-insensitive recent repository deduplication");
+        AssertTrue(
+            string.Equals(
+                Path.GetFullPath(repositories[5]),
+                service.Entries[0].Path,
+                StringComparison.OrdinalIgnoreCase),
+            "reopened repository was not moved to the front");
+
+        await service.RemoveAsync(repositories[5]);
+        AssertTrue(
+            service.Entries.All(entry =>
+                !string.Equals(
+                    entry.Path,
+                    Path.GetFullPath(repositories[5]),
+                    StringComparison.OrdinalIgnoreCase)),
+            "removed recent repository remained in settings");
+
+        var loaded = await store.LoadAsync();
+        AssertEqual(
+            service.Entries.Count,
+            loaded.RecentRepositories.Count,
+            "persisted recent repository count");
+
+        var legacyRoot = Path.Combine(testRoot, "Legacy");
+        var legacyPaths = new AppPaths(legacyRoot);
+        Directory.CreateDirectory(legacyRoot);
+        File.WriteAllText(
+            legacyPaths.SettingsFile,
+            """{"DefaultCloneDirectory":"C:\\Repos","NotificationsEnabled":true}""");
+        var legacySettings = await new JsonSettingsStore(legacyPaths).LoadAsync();
+        AssertEqual(
+            0,
+            legacySettings.RecentRepositories.Count,
+            "settings compatibility without recent repositories");
+    }
+    finally
+    {
+        if (Directory.Exists(testRoot))
+        {
+            Directory.Delete(testRoot, true);
+        }
+    }
+}
+
+static void VerifyRepositoryLauncher()
+{
+    var repositoryPath = Path.GetFullPath(
+        Path.Combine(Path.GetTempPath(), $"GitTool-Launcher-{Guid.NewGuid():N}"));
+    var solutionPath = Path.Combine(repositoryPath, "GitTool.sln");
+    var platform = new FakeRepositoryLauncherPlatform();
+    var service = new RepositoryLauncherService(platform);
+    var availability = new RepositoryLauncherAvailability(
+        @"C:\Tools\wt.exe",
+        @"C:\Tools\Code.exe",
+        @"C:\Tools\devenv.exe",
+        [solutionPath]);
+
+    service.Launch(
+        RepositoryLaunchTarget.Terminal,
+        repositoryPath,
+        availability);
+    AssertLaunch(
+        platform.LastStartInfo,
+        @"C:\Tools\wt.exe",
+        repositoryPath,
+        "-d",
+        repositoryPath);
+
+    service.Launch(
+        RepositoryLaunchTarget.VisualStudioCode,
+        repositoryPath,
+        availability);
+    AssertLaunch(
+        platform.LastStartInfo,
+        @"C:\Tools\Code.exe",
+        repositoryPath,
+        "--new-window",
+        repositoryPath);
+
+    service.Launch(
+        RepositoryLaunchTarget.FileExplorer,
+        repositoryPath,
+        availability);
+    AssertLaunch(
+        platform.LastStartInfo,
+        "explorer.exe",
+        repositoryPath,
+        repositoryPath);
+
+    service.Launch(
+        RepositoryLaunchTarget.VisualStudio,
+        repositoryPath,
+        availability,
+        solutionPath);
+    AssertLaunch(
+        platform.LastStartInfo,
+        @"C:\Tools\devenv.exe",
+        repositoryPath,
+        solutionPath);
+
+    var outsideSolutionRejected = false;
+    try
+    {
+        service.Launch(
+            RepositoryLaunchTarget.VisualStudio,
+            repositoryPath,
+            availability,
+            Path.Combine(Path.GetTempPath(), "Outside.sln"));
+    }
+    catch (InvalidOperationException)
+    {
+        outsideSolutionRejected = true;
+    }
+
+    AssertTrue(outsideSolutionRejected, "Visual Studio accepted a solution outside the repository");
+
+    var unavailableTargetRejected = false;
+    try
+    {
+        service.Launch(
+            RepositoryLaunchTarget.Terminal,
+            repositoryPath,
+            availability with { TerminalExecutable = null });
+    }
+    catch (InvalidOperationException)
+    {
+        unavailableTargetRejected = true;
+    }
+
+    AssertTrue(unavailableTargetRejected, "an unavailable launcher target was started");
+}
+
+static void AssertLaunch(
+    ProcessStartInfo? startInfo,
+    string expectedExecutable,
+    string expectedWorkingDirectory,
+    params string[] expectedArguments)
+{
+    AssertTrue(startInfo is not null, "launcher did not provide process start information");
+    AssertEqual(expectedExecutable, startInfo!.FileName, "launcher executable");
+    AssertEqual(expectedWorkingDirectory, startInfo.WorkingDirectory, "launcher working directory");
+    AssertTrue(
+        startInfo.ArgumentList.SequenceEqual(expectedArguments),
+        "launcher arguments did not match the selected target");
 }
 
 static void AssertTrue(bool condition, string subject)
@@ -373,4 +558,19 @@ file sealed class TestLogger : IAppLogger
     }
 
     public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+}
+
+file sealed class FakeRepositoryLauncherPlatform : IRepositoryLauncherPlatform
+{
+    public ProcessStartInfo? LastStartInfo { get; private set; }
+
+    public Task<RepositoryLauncherAvailability> DiscoverAsync(
+        string repositoryPath,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public void Start(ProcessStartInfo startInfo)
+    {
+        LastStartInfo = startInfo;
+    }
 }

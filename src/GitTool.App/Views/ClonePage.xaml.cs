@@ -65,6 +65,27 @@ public sealed partial class ClonePage : Page
             ResultInfoBar.Title = "Clone complete";
             ResultInfoBar.Message = result.Summary;
             ResultInfoBar.IsOpen = true;
+
+            if (!string.IsNullOrWhiteSpace(result.AffectedPath))
+            {
+                try
+                {
+                    await App.Current.Services.RecentRepositories.RecordAsync(
+                        result.AffectedPath);
+                }
+                catch (Exception exception) when (
+                    exception is IOException
+                        or UnauthorizedAccessException
+                        or System.Security.SecurityException)
+                {
+                    App.Current.Services.Logger.Warning(
+                        $"The cloned repository could not be added to recent repositories: {exception.Message}");
+                    ResultInfoBar.Severity = InfoBarSeverity.Warning;
+                    ResultInfoBar.Title = "Clone complete with a warning";
+                    ResultInfoBar.Message =
+                        $"{result.Summary} GitTool could not update recent repositories.";
+                }
+            }
         }
     }
 }

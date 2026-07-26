@@ -15,7 +15,9 @@ public sealed class ProcessRunner
         string? workingDirectory,
         IProgress<string>? progress,
         CancellationToken cancellationToken,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        string? standardInput = null,
+        int maximumCapturedCharacters = MaximumCapturedCharacters)
     {
         if (cancellationToken.IsCancellationRequested)
         {
@@ -24,7 +26,11 @@ public sealed class ProcessRunner
 
         using var process = new Process
         {
-            StartInfo = CreateStartInfo(fileName, arguments, workingDirectory),
+            StartInfo = CreateStartInfo(
+                fileName,
+                arguments,
+                workingDirectory,
+                redirectStandardInput: standardInput is not null),
             EnableRaisingEvents = true
         };
 
@@ -46,8 +52,19 @@ public sealed class ProcessRunner
 
         var standardOutput = new StringBuilder();
         var standardError = new StringBuilder();
-        var outputTask = PumpOutputAsync(process.StandardOutput, standardOutput, progress);
-        var errorTask = PumpOutputAsync(process.StandardError, standardError, progress);
+        var inputTask = standardInput is null
+            ? Task.CompletedTask
+            : WriteStandardInputAsync(process, standardInput);
+        var outputTask = PumpOutputAsync(
+            process.StandardOutput,
+            standardOutput,
+            progress,
+            maximumCapturedCharacters);
+        var errorTask = PumpOutputAsync(
+            process.StandardError,
+            standardError,
+            progress,
+            maximumCapturedCharacters);
         var waitTask = process.WaitForExitAsync(CancellationToken.None);
         var cancellationSignal = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -81,7 +98,7 @@ public sealed class ProcessRunner
             await waitTask.ConfigureAwait(false);
         }
 
-        await Task.WhenAll(outputTask, errorTask).ConfigureAwait(false);
+        await Task.WhenAll(inputTask, outputTask, errorTask).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(shutdownError))
         {
@@ -100,13 +117,15 @@ public sealed class ProcessRunner
     private static ProcessStartInfo CreateStartInfo(
         string fileName,
         IEnumerable<string> arguments,
-        string? workingDirectory)
+        string? workingDirectory,
+        bool redirectStandardInput)
     {
         var startInfo = new ProcessStartInfo
         {
             FileName = fileName,
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardInput = redirectStandardInput,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory)
@@ -127,11 +146,12 @@ public sealed class ProcessRunner
     private static async Task PumpOutputAsync(
         StreamReader reader,
         StringBuilder destination,
-        IProgress<string>? progress)
+        IProgress<string>? progress,
+        int maximumCapturedCharacters)
     {
         while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line)
         {
-            if (destination.Length < MaximumCapturedCharacters)
+            if (destination.Length < maximumCapturedCharacters)
             {
                 destination.AppendLine(line);
             }
@@ -139,6 +159,39 @@ public sealed class ProcessRunner
             if (!string.IsNullOrWhiteSpace(line))
             {
                 progress?.Report(line.Trim());
+            }
+        }
+    }
+
+    private static async Task WriteStandardInputAsync(
+        Process process,
+        string standardInput)
+    {
+        try
+        {
+            await process.StandardInput.WriteAsync(standardInput)
+                .ConfigureAwait(false);
+            await process.StandardInput.FlushAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or InvalidOperationException
+                or ObjectDisposedException)
+        {
+            // Process exit, timeout, or cancellation can close the input pipe.
+        }
+        finally
+        {
+            try
+            {
+                process.StandardInput.Close();
+            }
+            catch (Exception exception) when (
+                exception is IOException
+                    or InvalidOperationException
+                    or ObjectDisposedException)
+            {
+                // The process has already closed its input pipe.
             }
         }
     }

@@ -37,11 +37,13 @@
             x:Name="MainNavigation"
             Grid.Row="1"
             Background="Transparent"
+            CompactModeThresholdWidth="640"
+            ExpandedModeThresholdWidth="1280"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
             IsTitleBarAutoPaddingEnabled="False"
             OpenPaneLength="250"
-            PaneDisplayMode="Left"
+            PaneDisplayMode="Auto"
             PaneTitle="Git workflows"
             SelectionChanged="OnNavigationSelectionChanged">
             <NavigationView.MenuItems>

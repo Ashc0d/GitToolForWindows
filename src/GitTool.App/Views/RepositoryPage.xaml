@@ -2,19 +2,62 @@
     x:Class="GitTool.App.Views.RepositoryPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:GitTool.App.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Background="Transparent"
     mc:Ignorable="d">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Grid MaxWidth="980" Padding="40,34,40,48" HorizontalAlignment="Center">
+    <ScrollViewer
+        HorizontalScrollBarVisibility="Disabled"
+        VerticalScrollBarVisibility="Auto">
+        <Grid
+            x:Name="PageLayoutRoot"
+            MaxWidth="1180"
+            Padding="20,24,20,36"
+            HorizontalAlignment="Center">
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="PageWidthStates">
+                    <VisualState x:Name="CompactPage">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="0" />
+                        </VisualState.StateTriggers>
+                        <VisualState.Setters>
+                            <Setter
+                                Target="PageLayoutRoot.Padding"
+                                Value="20,24,20,36" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="StandardPage">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="900" />
+                        </VisualState.StateTriggers>
+                        <VisualState.Setters>
+                            <Setter
+                                Target="PageLayoutRoot.Padding"
+                                Value="32,30,32,42" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="WidePage">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="1600" />
+                        </VisualState.StateTriggers>
+                        <VisualState.Setters>
+                            <Setter
+                                Target="PageLayoutRoot.Padding"
+                                Value="40,34,40,48" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
             <StackPanel Spacing="24">
                 <StackPanel Spacing="8">
-                    <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Manage a repository" />
+                    <TextBlock
+                        Style="{StaticResource PageTitleTextStyle}"
+                        Text="Manage a repository" />
                     <TextBlock
                         Style="{StaticResource PageSubtitleTextStyle}"
-                        Text="Select a local Git working tree, review its current state, then fetch, pull, or push committed changes." />
+                        Text="Select a local Git working tree, review its current state, then fetch, pull, push, or explore its history." />
                 </StackPanel>
 
                 <InfoBar
@@ -24,7 +67,10 @@
 
                 <Border Style="{StaticResource SectionCardStyle}">
                     <StackPanel Spacing="18">
-                        <TextBlock FontSize="18" FontWeight="SemiBold" Text="Local repository" />
+                        <TextBlock
+                            FontSize="18"
+                            FontWeight="SemiBold"
+                            Text="Local repository" />
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -34,13 +80,96 @@
                                 x:Name="RepositoryPathTextBox"
                                 IsReadOnly="True"
                                 PlaceholderText="Choose a Git repository folder" />
-                            <Button Grid.Column="1" Click="OnChooseRepositoryClick">
+                            <Button
+                                Grid.Column="1"
+                                Click="OnChooseRepositoryClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon FontSize="16" Glyph="&#xED25;" />
                                     <TextBlock Text="Select repository" />
                                 </StackPanel>
                             </Button>
                         </Grid>
+
+                        <Expander
+                            x:Name="RecentRepositoriesExpander"
+                            Header="Recent repositories"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            IsExpanded="False">
+                            <Grid Margin="0,8,0,0">
+                                <ListView
+                                    x:Name="RecentRepositoriesList"
+                                    MaxHeight="280"
+                                    ScrollViewer.IsVerticalScrollChainingEnabled="False"
+                                    SelectionMode="None">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <Setter Property="Padding" Value="4,2" />
+                                            <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid
+                                                Padding="4,5"
+                                                ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock
+                                                        FontWeight="SemiBold"
+                                                        Text="{Binding Name}"
+                                                        TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="{Binding Path}"
+                                                        TextTrimming="CharacterEllipsis"
+                                                        ToolTipService.ToolTip="{Binding Path}" />
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock
+                                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                            Text="{Binding LastOpenedText}" />
+                                                        <TextBlock
+                                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                            Text="{Binding AvailabilityText}"
+                                                            Visibility="{Binding MissingVisibility}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <StackPanel
+                                                    Grid.Column="1"
+                                                    VerticalAlignment="Center"
+                                                    Orientation="Horizontal"
+                                                    Spacing="6">
+                                                    <Button
+                                                        Click="OnOpenRecentRepositoryClick"
+                                                        IsEnabled="{Binding IsAvailable}"
+                                                        Tag="{Binding Path}"
+                                                        ToolTipService.ToolTip="Open repository">
+                                                        <FontIcon FontSize="14" Glyph="&#xE8E5;" />
+                                                    </Button>
+                                                    <Button
+                                                        Click="OnRemoveRecentRepositoryClick"
+                                                        Tag="{Binding Path}"
+                                                        ToolTipService.ToolTip="Remove from recent repositories">
+                                                        <FontIcon FontSize="14" Glyph="&#xE74D;" />
+                                                    </Button>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+
+                                <TextBlock
+                                    x:Name="RecentRepositoriesEmptyText"
+                                    Padding="8,12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="Cloned and opened repositories will appear here."
+                                    TextWrapping="Wrap" />
+                            </Grid>
+                        </Expander>
                     </StackPanel>
                 </Border>
 
@@ -48,10 +177,11 @@
                     x:Name="RepositoryDetailsCard"
                     Style="{StaticResource SectionCardStyle}"
                     Visibility="Collapsed">
-                    <StackPanel Spacing="22">
+                    <StackPanel Spacing="20">
                         <Grid ColumnSpacing="16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="4">
@@ -64,8 +194,64 @@
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                            <Button
+                            <DropDownButton
+                                x:Name="OpenWithButton"
                                 Grid.Column="1"
+                                VerticalAlignment="Center">
+                                <DropDownButton.Content>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontSize="16" Glyph="&#xE7AC;" />
+                                        <TextBlock Text="Open with" />
+                                    </StackPanel>
+                                </DropDownButton.Content>
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem
+                                            x:Name="OpenTerminalMenuItem"
+                                            Click="OnOpenTerminalClick"
+                                            IsEnabled="False"
+                                            Text="Windows Terminal">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE756;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem
+                                            x:Name="OpenVisualStudioCodeMenuItem"
+                                            Click="OnOpenVisualStudioCodeClick"
+                                            IsEnabled="False"
+                                            Text="Visual Studio Code">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE943;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutSubItem
+                                            x:Name="OpenVisualStudioMenuItem"
+                                            IsEnabled="False"
+                                            Text="Visual Studio">
+                                            <MenuFlyoutSubItem.Icon>
+                                                <FontIcon Glyph="&#xE943;" />
+                                            </MenuFlyoutSubItem.Icon>
+                                        </MenuFlyoutSubItem>
+                                        <MenuFlyoutItem
+                                            Click="OnOpenFileExplorerClick"
+                                            Text="File Explorer">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xED25;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem
+                                            Click="OnCopyRepositoryPathClick"
+                                            Text="Copy path">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE8C8;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
+                            <Button
+                                Grid.Column="2"
                                 VerticalAlignment="Center"
                                 Click="OnRefreshRepositoryClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -75,62 +261,586 @@
                             </Button>
                         </Grid>
 
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                        <SelectorBar
+                            x:Name="RepositorySelectorBar"
+                            SelectionChanged="OnRepositoryViewSelectionChanged">
+                            <SelectorBarItem
+                                x:Name="OverviewSelectorItem"
+                                Text="Overview">
+                                <SelectorBarItem.Icon>
+                                    <FontIcon Glyph="&#xE80F;" />
+                                </SelectorBarItem.Icon>
+                            </SelectorBarItem>
+                            <SelectorBarItem
+                                x:Name="HistorySelectorItem"
+                                Text="History">
+                                <SelectorBarItem.Icon>
+                                    <FontIcon Glyph="&#xE81C;" />
+                                </SelectorBarItem.Icon>
+                            </SelectorBarItem>
+                        </SelectorBar>
 
-                            <Border Padding="14" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8">
-                                <StackPanel Spacing="5">
-                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Branch" />
-                                    <TextBlock x:Name="BranchText" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                            </Border>
-                            <Border Grid.Column="1" Padding="14" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8">
-                                <StackPanel Spacing="5">
-                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Working tree" />
-                                    <TextBlock x:Name="WorkingTreeText" FontWeight="SemiBold" />
-                                </StackPanel>
-                            </Border>
-                            <Border Grid.Column="2" Padding="14" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="8">
-                                <StackPanel Spacing="5">
-                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Origin" />
-                                    <TextBlock x:Name="RemoteText" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
+                        <StackPanel
+                            x:Name="OverviewPanel"
+                            Spacing="20">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
 
-                        <CheckBox
-                            x:Name="IncludeSubmodulesCheckBox"
-                            Content="Include submodules in fetch and pull operations" />
+                                <Border
+                                    Padding="14"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="8">
+                                    <StackPanel Spacing="5">
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Branch" />
+                                        <TextBlock
+                                            x:Name="BranchText"
+                                            FontWeight="SemiBold"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+                                <Border
+                                    Grid.Column="1"
+                                    Padding="14"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="8">
+                                    <StackPanel Spacing="5">
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Working tree" />
+                                        <TextBlock
+                                            x:Name="WorkingTreeText"
+                                            FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Border>
+                                <Border
+                                    Grid.Column="2"
+                                    Padding="14"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="8">
+                                    <StackPanel Spacing="5">
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Origin" />
+                                        <TextBlock
+                                            x:Name="RemoteText"
+                                            FontWeight="SemiBold"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
 
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Button Click="OnFetchClick">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon FontSize="16" Glyph="&#xE895;" />
-                                    <TextBlock Text="Fetch" />
-                                </StackPanel>
-                            </Button>
-                            <Button Click="OnPullClick" Style="{StaticResource AccentButtonStyle}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon FontSize="16" Glyph="&#xE896;" />
-                                    <TextBlock Text="Pull" />
-                                </StackPanel>
-                            </Button>
-                            <Button Click="OnPushClick">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon FontSize="16" Glyph="&#xE898;" />
-                                    <TextBlock Text="Push commits" />
-                                </StackPanel>
-                            </Button>
+                            <CheckBox
+                                x:Name="IncludeSubmodulesCheckBox"
+                                Content="Include submodules in fetch and pull operations" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <Button Click="OnFetchClick">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontSize="16" Glyph="&#xE895;" />
+                                        <TextBlock Text="Fetch" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    Click="OnPullClick"
+                                    Style="{StaticResource AccentButtonStyle}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontSize="16" Glyph="&#xE896;" />
+                                        <TextBlock Text="Pull" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Click="OnPushClick">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontSize="16" Glyph="&#xE898;" />
+                                        <TextBlock Text="Push commits" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                Text="Pull uses --ff-only to avoid creating an unexpected merge commit. Add and commit are deliberately isolated as future repository operations."
+                                TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <TextBlock
-                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                            Text="Pull uses --ff-only to avoid creating an unexpected merge commit. Add and commit are deliberately isolated as future repository operations."
-                            TextWrapping="Wrap" />
+                        <Grid
+                            x:Name="HistoryPanel"
+                            RowSpacing="16"
+                            Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid
+                                x:Name="HistoryHeaderGrid"
+                                ColumnSpacing="12"
+                                RowSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="HistoryHeaderWidthStates">
+                                        <VisualState x:Name="CompactHistoryHeader">
+                                            <VisualState.StateTriggers>
+                                                <AdaptiveTrigger MinWindowWidth="0" />
+                                            </VisualState.StateTriggers>
+                                            <VisualState.Setters>
+                                                <Setter
+                                                    Target="HistoryHeaderText.(Grid.ColumnSpan)"
+                                                    Value="3" />
+                                                <Setter
+                                                    Target="HistoryProgressRing.(Grid.Row)"
+                                                    Value="1" />
+                                                <Setter
+                                                    Target="HistoryProgressRing.(Grid.Column)"
+                                                    Value="1" />
+                                                <Setter
+                                                    Target="HistoryRefreshButton.(Grid.Row)"
+                                                    Value="1" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="WideHistoryHeader">
+                                            <VisualState.StateTriggers>
+                                                <AdaptiveTrigger MinWindowWidth="1000" />
+                                            </VisualState.StateTriggers>
+                                            <VisualState.Setters>
+                                                <Setter
+                                                    Target="HistoryHeaderText.(Grid.ColumnSpan)"
+                                                    Value="1" />
+                                                <Setter
+                                                    Target="HistoryProgressRing.(Grid.Row)"
+                                                    Value="0" />
+                                                <Setter
+                                                    Target="HistoryProgressRing.(Grid.Column)"
+                                                    Value="1" />
+                                                <Setter
+                                                    Target="HistoryRefreshButton.(Grid.Row)"
+                                                    Value="0" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <StackPanel
+                                    x:Name="HistoryHeaderText"
+                                    Spacing="3">
+                                    <TextBlock
+                                        FontSize="18"
+                                        FontWeight="SemiBold"
+                                        Text="Commit history" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="Newest 200 commits across all local and remote references."
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ProgressRing
+                                    x:Name="HistoryProgressRing"
+                                    Grid.Column="1"
+                                    Grid.Row="1"
+                                    Width="22"
+                                    Height="22"
+                                    IsActive="False"
+                                    Visibility="Collapsed" />
+                                <Button
+                                    x:Name="HistoryRefreshButton"
+                                    Grid.Column="2"
+                                    Grid.Row="1"
+                                    Click="OnRefreshHistoryClick">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontSize="16" Glyph="&#xE72C;" />
+                                        <TextBlock Text="Refresh history" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <Grid
+                                x:Name="HistoryContentGrid"
+                                Grid.Row="1"
+                                ColumnSpacing="16"
+                                RowSpacing="16"
+                                SizeChanged="OnHistoryContentSizeChanged">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*" />
+                                    <ColumnDefinition Width="2*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <Border
+                                    x:Name="HistoryListCard"
+                                    Grid.ColumnSpan="2"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="8">
+                                    <Grid>
+                                        <ListView
+                                            x:Name="HistoryListView"
+                                            Height="600"
+                                            Background="Transparent"
+                                            Padding="0,8,18,8"
+                                            ScrollViewer.IsVerticalScrollChainingEnabled="False"
+                                            SelectionChanged="OnHistorySelectionChanged"
+                                            SelectionMode="Single">
+                                            <ListView.ItemContainerStyle>
+                                                <Style TargetType="ListViewItem">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                    <Setter Property="Padding" Value="6,0" />
+                                                    <Setter Property="Margin" Value="4,0,4,0" />
+                                                    <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+                                                </Style>
+                                            </ListView.ItemContainerStyle>
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid
+                                                        Height="68"
+                                                        AutomationProperties.Name="{Binding AutomationName}"
+                                                        ColumnSpacing="10">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <controls:GitGraphView
+                                                            Width="{Binding Graph.GraphWidth}"
+                                                            Height="64"
+                                                            Row="{Binding Graph}" />
+
+                                                        <StackPanel
+                                                            Grid.Column="1"
+                                                            VerticalAlignment="Center"
+                                                            Spacing="3">
+                                                            <TextBlock
+                                                                FontWeight="SemiBold"
+                                                                Text="{Binding Subject}"
+                                                                TextTrimming="CharacterEllipsis"
+                                                                ToolTipService.ToolTip="{Binding Subject}" />
+                                                            <TextBlock
+                                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                                Text="{Binding ReferencesText}"
+                                                                TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock
+                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                Text="{Binding AuthorSummary}"
+                                                                TextTrimming="CharacterEllipsis" />
+                                                        </StackPanel>
+
+                                                        <Grid
+                                                            Grid.Column="2"
+                                                            Margin="6,0,2,0"
+                                                            VerticalAlignment="Center">
+                                                            <Border
+                                                                Padding="7,2"
+                                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                                BorderThickness="1"
+                                                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                                                Visibility="{Binding SignedBadgeVisibility}">
+                                                                <TextBlock
+                                                                    FontSize="11"
+                                                                    Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                                    Text="Signed"
+                                                                    ToolTipService.ToolTip="A signature is present. Verification is not evaluated." />
+                                                            </Border>
+                                                            <Border
+                                                                Padding="7,2"
+                                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                                BorderThickness="1"
+                                                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                                                Visibility="{Binding UnsignedBadgeVisibility}">
+                                                                <TextBlock
+                                                                    FontSize="11"
+                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                    Text="Unsigned" />
+                                                            </Border>
+                                                            <Border
+                                                                Padding="7,2"
+                                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                                BorderThickness="1"
+                                                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                                                Visibility="{Binding UnknownBadgeVisibility}">
+                                                                <TextBlock
+                                                                    FontSize="11"
+                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                    Text="Unknown"
+                                                                    ToolTipService.ToolTip="Signature presence could not be inspected." />
+                                                            </Border>
+                                                        </Grid>
+
+                                                        <TextBlock
+                                                            Grid.Column="3"
+                                                            Margin="6,0,8,0"
+                                                            VerticalAlignment="Center"
+                                                            FontFamily="Consolas"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="{Binding ShortHash}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+
+                                        <StackPanel
+                                            x:Name="HistoryEmptyPanel"
+                                            Margin="24"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Spacing="10">
+                                            <FontIcon
+                                                HorizontalAlignment="Center"
+                                                FontSize="32"
+                                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                Glyph="&#xE81C;" />
+                                            <TextBlock
+                                                x:Name="HistoryEmptyText"
+                                                HorizontalAlignment="Center"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="Open History to load the repository graph."
+                                                TextAlignment="Center"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <Border
+                                    x:Name="CommitDetailsCard"
+                                    Grid.Row="1"
+                                    Grid.ColumnSpan="2"
+                                    Padding="20"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="8">
+                                    <Grid
+                                        x:Name="CommitDetailsHost"
+                                        Height="460">
+                                        <StackPanel
+                                            x:Name="CommitDetailsPlaceholder"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Spacing="10">
+                                            <FontIcon
+                                                HorizontalAlignment="Center"
+                                                FontSize="30"
+                                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                Glyph="&#xE946;" />
+                                            <TextBlock
+                                                x:Name="CommitDetailsPlaceholderText"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="Select a commit dot to inspect its details."
+                                                TextAlignment="Center"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+
+                                        <ScrollViewer
+                                            x:Name="CommitDetailsScrollViewer"
+                                            Padding="0,0,20,0"
+                                            ScrollViewer.IsVerticalScrollChainingEnabled="False"
+                                            Visibility="Collapsed"
+                                            VerticalScrollBarVisibility="Auto">
+                                            <StackPanel Spacing="18">
+                                                <Grid ColumnSpacing="12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock
+                                                        x:Name="CommitSubjectText"
+                                                        FontSize="20"
+                                                        FontWeight="SemiBold"
+                                                        IsTextSelectionEnabled="True"
+                                                        TextWrapping="Wrap" />
+                                                    <Border
+                                                        x:Name="CommitSignatureBadge"
+                                                        Grid.Column="1"
+                                                        Padding="7,2"
+                                                        VerticalAlignment="Center"
+                                                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="{ThemeResource ControlCornerRadius}">
+                                                        <TextBlock
+                                                            x:Name="CommitSignatureText"
+                                                            FontSize="11" />
+                                                    </Border>
+                                                    <DropDownButton
+                                                        x:Name="CopyCommitButton"
+                                                        Grid.Column="2"
+                                                        VerticalAlignment="Center"
+                                                        ToolTipService.ToolTip="Copy commit information">
+                                                        <DropDownButton.Content>
+                                                            <FontIcon FontSize="14" Glyph="&#xE8C8;" />
+                                                        </DropDownButton.Content>
+                                                        <DropDownButton.Flyout>
+                                                            <MenuFlyout>
+                                                                <MenuFlyoutItem
+                                                                    Click="OnCopyCommitIdClick"
+                                                                    Text="Copy commit ID" />
+                                                                <MenuFlyoutItem
+                                                                    Click="OnCopyCommitMessageClick"
+                                                                    Text="Copy message" />
+                                                                <MenuFlyoutItem
+                                                                    Click="OnCopyCommitAuthorClick"
+                                                                    Text="Copy author" />
+                                                                <MenuFlyoutSeparator />
+                                                                <MenuFlyoutItem
+                                                                    Click="OnCopyAllCommitDetailsClick"
+                                                                    Text="Copy all details" />
+                                                            </MenuFlyout>
+                                                        </DropDownButton.Flyout>
+                                                    </DropDownButton>
+                                                    <ProgressRing
+                                                        x:Name="CommitDetailsProgressRing"
+                                                        Grid.Column="3"
+                                                        Width="20"
+                                                        Height="20"
+                                                        IsActive="False"
+                                                        Visibility="Collapsed" />
+                                                </Grid>
+
+                                                <StackPanel Spacing="7">
+                                                    <TextBlock
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="Commit" />
+                                                    <TextBlock
+                                                        x:Name="CommitHashText"
+                                                        FontFamily="Consolas"
+                                                        IsTextSelectionEnabled="True"
+                                                        TextWrapping="WrapWholeWords" />
+                                                </StackPanel>
+
+                                                <StackPanel Spacing="7">
+                                                    <TextBlock
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="Author" />
+                                                    <TextBlock
+                                                        x:Name="CommitAuthorText"
+                                                        IsTextSelectionEnabled="True"
+                                                        TextWrapping="Wrap" />
+                                                    <TextBlock
+                                                        x:Name="CommitDateText"
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        IsTextSelectionEnabled="True" />
+                                                </StackPanel>
+
+                                                <StackPanel Spacing="7">
+                                                    <TextBlock
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="Parents" />
+                                                    <TextBlock
+                                                        x:Name="CommitParentsText"
+                                                        FontFamily="Consolas"
+                                                        IsTextSelectionEnabled="True"
+                                                        TextWrapping="WrapWholeWords" />
+                                                </StackPanel>
+
+                                                <StackPanel Spacing="7">
+                                                    <TextBlock
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="References" />
+                                                    <TextBlock
+                                                        x:Name="CommitReferencesText"
+                                                        IsTextSelectionEnabled="True"
+                                                        TextWrapping="Wrap" />
+                                                </StackPanel>
+
+                                                <StackPanel Spacing="7">
+                                                    <TextBlock
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="Message" />
+                                                    <TextBlock
+                                                        x:Name="CommitMessageText"
+                                                        IsTextSelectionEnabled="True"
+                                                        TextWrapping="Wrap" />
+                                                </StackPanel>
+
+                                                <StackPanel Spacing="9">
+                                                    <Grid ColumnSpacing="8">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock
+                                                            x:Name="CommitChangedFilesText"
+                                                            FontWeight="SemiBold"
+                                                            Text="Changed files" />
+                                                        <TextBlock
+                                                            x:Name="CommitTotalAdditionsText"
+                                                            Grid.Column="1"
+                                                            FontFamily="Consolas"
+                                                            FontWeight="SemiBold"
+                                                            Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                                                        <TextBlock
+                                                            x:Name="CommitTotalDeletionsText"
+                                                            Grid.Column="2"
+                                                            FontFamily="Consolas"
+                                                            FontWeight="SemiBold"
+                                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                                    </Grid>
+                                                    <ItemsControl x:Name="CommitFilesList">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid
+                                                                    Padding="0,5"
+                                                                    ColumnSpacing="10">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock
+                                                                        IsTextSelectionEnabled="True"
+                                                                        Text="{Binding Path}"
+                                                                        TextTrimming="CharacterEllipsis"
+                                                                        ToolTipService.ToolTip="{Binding Path}" />
+                                                                    <TextBlock
+                                                                        Grid.Column="1"
+                                                                        FontFamily="Consolas"
+                                                                        Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                                        Text="{Binding AdditionsText}"
+                                                                        Visibility="{Binding TextChangesVisibility}" />
+                                                                    <TextBlock
+                                                                        Grid.Column="2"
+                                                                        FontFamily="Consolas"
+                                                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                                        Text="{Binding DeletionsText}"
+                                                                        Visibility="{Binding TextChangesVisibility}" />
+                                                                    <TextBlock
+                                                                        Grid.Column="3"
+                                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                        Text="{Binding BinaryText}"
+                                                                        Visibility="{Binding BinaryVisibility}" />
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </ScrollViewer>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Grid>
                     </StackPanel>
                 </Border>
             </StackPanel>

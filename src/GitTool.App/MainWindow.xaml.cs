@@ -33,6 +33,7 @@ public sealed partial class MainWindow : Window
         ConfigureTitleBar();
         CenterWindow(windowId);
 
+        _appWindow.Changed += OnAppWindowChanged;
         _appWindow.Closing += OnAppWindowClosing;
         Activated += OnWindowActivated;
         Closed += OnWindowClosed;
@@ -173,6 +174,13 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() => _ = ConfirmCancellationAsync(closeWhenFinished: true));
     }
 
+    private void OnAppWindowChanged(
+        AppWindow sender,
+        AppWindowChangedEventArgs args)
+    {
+        App.Current.NotifyMainWindowLayoutChanged();
+    }
+
     private async Task ConfirmCancellationAsync(bool closeWhenFinished)
     {
         if (_cancellationDialogOpen)
@@ -278,6 +286,7 @@ public sealed partial class MainWindow : Window
 
         _shutdownStarted = true;
         _closeRequested = false;
+        _appWindow.Changed -= OnAppWindowChanged;
         Activated -= OnWindowActivated;
         App.Current.Services.OperationCoordinator.StatusChanged -= OnOperationStatusChanged;
 

@@ -34,6 +34,7 @@ public sealed class AppServices
             NotificationService,
             Logger);
         FolderPicker = new FolderPickerService();
+        RepositoryLauncher = new RepositoryLauncherService(processRunner);
     }
 
     public AppPaths Paths { get; }
@@ -58,9 +59,14 @@ public sealed class AppServices
 
     public FolderPickerService FolderPicker { get; }
 
+    internal RecentRepositoryService RecentRepositories { get; private set; } = null!;
+
+    internal RepositoryLauncherService RepositoryLauncher { get; }
+
     public async Task InitializeAsync(Action<string> notificationInvoked)
     {
         Settings = await SettingsStore.LoadAsync();
+        RecentRepositories = new RecentRepositoryService(Settings, SettingsStore);
         Logger.Info($"Settings loaded from '{Paths.SettingsFile}'.");
         await NotificationService.InitializeAsync(notificationInvoked);
     }

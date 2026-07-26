@@ -6,6 +6,8 @@ public sealed class AppSettings
 
     public bool NotificationsEnabled { get; set; } = true;
 
+    public List<RecentRepositoryEntry> RecentRepositories { get; set; } = [];
+
     public static AppSettings CreateDefault() => new();
 
     private static string GetDefaultCloneDirectory()
